@@ -1114,7 +1114,6 @@ document.addEventListener("keydown",e=>{
 
 /* ---------- início ---------- */
 const remoteMeta={};
-const BOOTSTRAP=["gente.seguranca.claude@demarco.com.br"];
 const DOMINIO="@demarco.com.br";
 firebase.initializeApp({apiKey:"AIzaSyC8Je0qKt7riNY8NTip_jvAFN00tlmbjcU",authDomain:"priorizacao-cards.firebaseapp.com",projectId:"priorizacao-cards",storageBucket:"priorizacao-cards.firebasestorage.app",messagingSenderId:"258615516001",appId:"1:258615516001:web:7e7830c027f7d9c9e10320"});
 const auth=firebase.auth();
@@ -1152,7 +1151,7 @@ async function start(u){
   const h=(location.hash||"").replace(/^#/,"");
   let acc=null;
   try{const s=await db.doc("config/acesso").get();acc=s.exists?s.data():null}catch(e){acc=undefined}
-  if(acc===null&&BOOTSTRAP.includes(email)){acc={gestores:[email]};try{await db.doc("config/acesso").set(acc)}catch(e){}}
+  if(acc===null){acc={gestores:[email]};try{await db.doc("config/acesso").set(acc)}catch(e){}}
   gestores=((acc&&acc.gestores)||[]).map(x=>String(x).toLowerCase());
   isGestor=gestores.includes(email);
   if(acc===undefined||(!isGestor&&!email.endsWith(DOMINIO))){db=null;canWrite=false;$("#noDb").hidden=false;$("#metaLine").textContent="";render();return}
