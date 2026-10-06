@@ -206,9 +206,9 @@ body{margin:0;font-family:var(--f-body)}label.drop{display:block}[hidden]{displa
       <div class="row"><button class="btn primary" id="impApply">Aplicar importação</button><button class="btn" id="impCancel">Cancelar</button></div>
     </div>
     <div id="impLast" class="meta" style="margin-top:18px"></div>
-    <div class="list-mini" style="margin-top:22px"><h3>Restaurar backup</h3><p class="meta" style="margin:4px 0 10px">Use só na mudança do claude.ai para cá, ou para voltar uma cópia salva. Substitui os dados atuais.</p>
+    <details class="list-mini" style="margin-top:22px"><summary style="cursor:pointer;font-weight:600">Opções avançadas: backup</summary><p class="meta" style="margin:8px 0 10px">"Baixar backup agora" guarda uma cópia de segurança (vale fazer antes de cada importação). "Restaurar" volta uma cópia salva e <b>substitui todos os dados atuais</b>.</p>
       <label class="btn" for="restoreIn">Escolher arquivo de backup (.json)</label><input type="file" id="restoreIn" accept=".json" hidden>
-      <button class="btn" id="btnBackup">Baixar backup agora</button><div id="restoreBox"></div></div>
+      <button class="btn" id="btnBackup">Baixar backup agora</button><div id="restoreBox"></div></details>
   </section>
 
   <!-- TRIAGEM -->
