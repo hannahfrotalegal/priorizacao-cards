@@ -156,7 +156,7 @@ body{margin:0;font-family:var(--f-body)}label.drop{display:block}[hidden]{displa
   <div class="top-in">
     <div class="brand">
       <h1>Priorização de Cards</h1>
-      <span class="row" style="gap:12px"><span class="meta" id="metaLine">Carregando…</span><button class="btn small" id="btnFull" hidden>Tela cheia</button><span class="meta" id="userBox"></span><button class="btn small" id="btnSair" hidden>Sair</button></span>
+      <span class="row" style="gap:12px"><span class="meta" id="metaLine">Carregando…</span><button class="btn small" id="btnFull" hidden>Tela cheia</button><span class="meta" id="userBox"></span><button class="btn small" id="btnSenha" hidden>Trocar senha</button><button class="btn small" id="btnSair" hidden>Sair</button></span>
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-v="importar">Importar bases</button>
@@ -176,11 +176,15 @@ body{margin:0;font-family:var(--f-body)}label.drop{display:block}[hidden]{displa
 <div class="wrap" id="loginWrap" hidden>
   <div class="login">
     <h2>Entrar</h2>
-    <p class="meta" id="loginMsg" style="margin:0">Digite seu e-mail. Você vai receber um link de acesso, sem senha.</p>
+    <p class="meta" id="loginMsg" style="margin:0">Entre com o e-mail e a senha que o gestor passou para você.</p>
     <label class="meta" for="loginEmail">E-mail</label>
-    <input id="loginEmail" type="email" autocomplete="email" placeholder="seu e-mail">
-    <button class="btn primary" id="btnLogin">Enviar link de acesso</button>
+    <input id="loginEmail" type="email" autocomplete="username" placeholder="seu e-mail">
+    <div id="pwRow" style="display:flex;flex-direction:column;gap:12px"><label class="meta" for="loginPw">Senha</label>
+    <input id="loginPw" type="password" autocomplete="current-password" placeholder="sua senha">
+    <button class="btn primary" id="btnPw">Entrar</button></div>
     <div class="err" id="loginErr" hidden></div>
+    <button class="link" id="btnModoLink" style="font-size:14px">Prefiro receber um link de acesso por e-mail</button>
+    <button class="btn primary" id="btnLogin" hidden>Enviar link de acesso</button>
   </div>
 </div>
 <main class="wrap" id="mainWrap">
@@ -1138,19 +1142,45 @@ $("#btnLogin").addEventListener("click",async()=>{
   catch(e){$("#loginErr").textContent="Não consegui enviar o link. Confira o e-mail e tente de novo.";$("#loginErr").hidden=false}
   finally{$("#btnLogin").disabled=false}
 });
-$("#loginEmail").addEventListener("keydown",e=>{if(e.key==="Enter")$("#btnLogin").click()});
+$("#loginEmail").addEventListener("keydown",e=>{if(e.key==="Enter"){if(modoLink)$("#btnLogin").click();else $("#loginPw").focus()}});
+let modoLink=false;
+function setModoLink(on){modoLink=on;$("#pwRow").hidden=on;$("#btnLogin").hidden=!on;$("#btnModoLink").textContent=on?"Prefiro entrar com senha":"Prefiro receber um link de acesso por e-mail";$("#loginErr").hidden=true;
+  $("#loginMsg").textContent=on?"Digite seu e-mail. Você vai receber um link de acesso, sem senha.":"Entre com o e-mail e a senha que o gestor passou para você."}
+$("#btnModoLink").addEventListener("click",()=>setModoLink(!modoLink));
+$("#loginPw").addEventListener("keydown",e=>{if(e.key==="Enter")$("#btnPw").click()});
+$("#btnPw").addEventListener("click",async()=>{
+  const email=$("#loginEmail").value.trim().toLowerCase(),pw=$("#loginPw").value;$("#loginErr").hidden=true;
+  if(!/^\S+@\S+\.\S+$/.test(email)||!pw){$("#loginErr").textContent="Digite o e-mail e a senha.";$("#loginErr").hidden=false;return}
+  $("#btnPw").disabled=true;
+  try{await auth.signInWithEmailAndPassword(email,pw)}
+  catch(e){const c=e&&e.code||"";$("#loginErr").textContent=c.includes("too-many")?"Muitas tentativas. Espere alguns minutos e tente de novo.":c.includes("network")?"Sem conexão. Confira a internet e tente de novo.":"E-mail ou senha incorretos. Se ainda não tem senha, peça ao gestor.";$("#loginErr").hidden=false}
+  finally{$("#btnPw").disabled=false}
+});
+$("#btnSenha").addEventListener("click",()=>{
+  $("#dId").textContent="";$("#dTitle").textContent="Trocar senha";$("#dChips").innerHTML="";
+  $("#dBody").innerHTML=`<div style="display:flex;flex-direction:column;gap:10px;max-width:360px"><label class="meta" for="pw1">Nova senha (mínimo 8 caracteres)</label><input id="pw1" type="password" autocomplete="new-password" style="border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 11px"><label class="meta" for="pw2">Repita a nova senha</label><input id="pw2" type="password" autocomplete="new-password" style="border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 11px"><button class="btn primary" id="pwSave">Salvar nova senha</button><div class="err" id="pwErr" hidden></div></div>`;
+  $("#dlg").showModal();
+});
+document.addEventListener("click",async e=>{
+  if(!e.target||e.target.id!=="pwSave")return;
+  const a=$("#pw1").value,b=$("#pw2").value,er=$("#pwErr");er.hidden=true;
+  if(a.length<8){er.textContent="Use pelo menos 8 caracteres.";er.hidden=false;return}
+  if(a!==b){er.textContent="As duas senhas não são iguais.";er.hidden=false;return}
+  try{await auth.currentUser.updatePassword(a);$("#dlg").close();toast("Senha trocada.")}
+  catch(x){er.textContent=(x&&x.code||"").includes("recent")?"Por segurança, clique em Sair, entre de novo e troque a senha logo em seguida.":"Não consegui trocar a senha. Tente de novo.";er.hidden=false}
+});
 $("#btnSair").addEventListener("click",()=>auth.signOut().then(()=>location.reload()));
 let confirmingLink=false;
 if(auth.isSignInWithEmailLink(location.href)){
   let em=null;try{em=localStorage.getItem("emailLogin")}catch(e){}
   if(em){auth.signInWithEmailLink(em,location.href).then(()=>history.replaceState(null,"",location.pathname)).catch(()=>showLogin("Esse link expirou ou já foi usado. Peça um novo."))}
-  else{confirmingLink=true;showLogin("Confirme o e-mail em que você recebeu o link.");$("#btnLogin").textContent="Entrar"}
+  else{confirmingLink=true;setModoLink(true);showLogin("Confirme o e-mail em que você recebeu o link.");$("#btnLogin").textContent="Entrar"}
 }
 let started=false;
 auth.onAuthStateChanged(u=>{if(!u){if(!confirmingLink)showLogin();return}hideLogin();if(!started){started=true;start(u)}});
 async function start(u){
   const email=(u.email||"").toLowerCase();
-  $("#userBox").textContent=email;$("#btnSair").hidden=false;
+  $("#userBox").textContent=email;$("#btnSair").hidden=false;$("#btnSenha").hidden=false;
   db=firebase.firestore();
   try{const pend=localStorage.getItem("pendHash");if(pend){localStorage.removeItem("pendHash");history.replaceState(null,"",location.pathname+"#"+pend)}}catch(e){}
   const h=(location.hash||"").replace(/^#/,"");
