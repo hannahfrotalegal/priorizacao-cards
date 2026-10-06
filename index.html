@@ -1,0 +1,1215 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Priorização de Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: barra de abas fixa no topo; cada aba é uma tela de trabalho para reunião (projetável), cards em grade ou duelo lado a lado. */
+:root{
+  --bg:#F3F5F7; --surface:#FFFFFF; --surface-2:#E9EDF1; --line:#D3DAE1;
+  --fg:#16202B; --muted:#5A6878; --accent:#0D5C7A; --accent-ink:#FFFFFF; --accent-soft:#D7E9F0;
+  --alta:#B4361F; --alta-soft:#F8E1DB; --media:#9A6A00; --media-soft:#F6EBCC; --baixa:#3D6B4A; --baixa-soft:#DDEDE1;
+  --focus:#0D5C7A;
+  --f-display:"Archivo","Segoe UI",Arial,sans-serif; --f-body:"Source Sans 3","Segoe UI",Arial,sans-serif; --f-mono:"JetBrains Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F151B; --surface:#17212A; --surface-2:#1F2B36; --line:#2E3C49;
+  --fg:#E6ECF1; --muted:#9AA9B7; --accent:#5DB3D3; --accent-ink:#0B1720; --accent-soft:#1C3A48;
+  --alta:#F08A72; --alta-soft:#3D2019; --media:#E2B44A; --media-soft:#3A2F12; --baixa:#86C597; --baixa-soft:#1C3324; --focus:#5DB3D3; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F151B; --surface:#17212A; --surface-2:#1F2B36; --line:#2E3C49;
+  --fg:#E6ECF1; --muted:#9AA9B7; --accent:#5DB3D3; --accent-ink:#0B1720; --accent-soft:#1C3A48;
+  --alta:#F08A72; --alta-soft:#3D2019; --media:#E2B44A; --media-soft:#3A2F12; --baixa:#86C597; --baixa-soft:#1C3324; --focus:#5DB3D3; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.wrap{max-width:1280px;margin:0 auto;padding-inline:20px;padding-block:0 48px}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.top-in{max-width:1280px;margin:0 auto;padding:14px 20px 0;display:flex;flex-direction:column;gap:10px}
+.brand{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;justify-content:space-between}
+h1{font-family:var(--f-display);font-weight:800;font-size:22px;letter-spacing:-.01em;margin:0}
+.meta{color:var(--muted);font-size:13px}
+nav.tabs{display:flex;gap:4px;overflow-x:auto}
+nav.tabs button{border:0;background:none;padding:10px 14px;border-bottom:3px solid transparent;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;display:flex;gap:8px;align-items:center}
+nav.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.count{font-family:var(--f-mono);font-size:12px;background:var(--surface-2);border-radius:999px;padding:1px 8px;color:var(--fg)}
+.banner{margin-top:16px;padding:10px 14px;border-radius:8px;background:var(--media-soft);color:var(--fg);font-size:14px}
+section.view{padding-top:22px}
+h2{font-family:var(--f-display);font-weight:700;font-size:20px;margin:0 0 4px;text-wrap:balance}
+.lead{color:var(--muted);margin:0 0 18px;max-width:70ch}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.small{padding:4px 10px;font-size:13px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.spacer{flex:1}
+/* chips */
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--fg);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.chip.cli{background:var(--accent-soft)}
+.chip.ini{background:var(--fg);color:var(--bg)}
+.f-alta{background:var(--alta-soft);color:var(--alta)} .f-media{background:var(--media-soft);color:var(--media)} .f-baixa{background:var(--baixa-soft);color:var(--baixa)}
+.imp{font-family:var(--f-mono);font-size:11px}
+.cid{font-family:var(--f-mono);font-weight:700;font-size:13px;color:var(--accent)}
+/* import */
+.drop{border:2px dashed var(--line);border-radius:12px;padding:36px 20px;text-align:center;background:var(--surface);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop strong{display:block;font-family:var(--f-display);font-size:18px;margin-bottom:4px}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat b{display:block;font-family:var(--f-display);font-size:28px;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:13px}
+.list-mini{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 14px;margin-bottom:14px}
+.list-mini h3{font-size:14px;margin:6px 0}
+.list-mini li{padding:3px 0;font-size:14px}
+.list-mini ul{margin:0;padding-left:18px;max-height:220px;overflow:auto}
+.err{color:var(--alta);font-weight:600;margin-top:12px}
+/* triagem grid */
+.filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.filters input,.filters select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;min-width:0}
+.filters input{flex:1 1 240px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card h4{margin:0;font-size:16px;font-weight:700;line-height:1.3;text-wrap:balance}
+.card .who{color:var(--muted);font-size:13px}
+.card .prob{font-size:14px;color:var(--fg);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.tri{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:auto}
+.tri button{border:1px solid var(--line);border-radius:8px;padding:8px 4px;font-weight:700;cursor:pointer;background:var(--surface)}
+.tri .a:hover{background:var(--alta-soft);color:var(--alta);border-color:var(--alta)}
+.tri .m:hover{background:var(--media-soft);color:var(--media);border-color:var(--media)}
+.tri .b:hover{background:var(--baixa-soft);color:var(--baixa);border-color:var(--baixa)}
+.tri .i{color:var(--muted)}.tri .i:hover{background:var(--surface-2);color:var(--fg);border-color:var(--fg)}
+.chip.ar{background:var(--surface);border:1px solid var(--line)}
+.picker{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+.picker .lbl2{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-right:4px}
+.picker button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-weight:600;cursor:pointer}
+.picker button[aria-pressed="true"]{border:2px solid var(--accent);padding:5px 13px}
+.picker button.f-alta[aria-pressed="true"]{border-color:var(--alta)}.picker button.f-media[aria-pressed="true"]{border-color:var(--media)}.picker button.f-baixa[aria-pressed="true"]{border-color:var(--baixa)}
+.note{font-size:14px;color:var(--muted);margin:-4px 0 14px}
+.link{background:none;border:0;padding:0;color:var(--accent);font-weight:600;cursor:pointer;font-size:13px;text-align:left}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:30px 20px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--fg);font-family:var(--f-display);font-size:18px;margin-bottom:6px}
+/* batalha */
+.tierpick{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.tierpick button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-weight:700;cursor:pointer}
+.tierpick button[aria-pressed="true"]{border-width:2px;border-color:currentColor}
+.arena{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:stretch}
+.vs{align-self:center;font-family:var(--f-display);font-weight:800;font-size:28px;color:var(--muted)}
+.fighter{background:var(--surface);border:2px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.fighter .role{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.fighter h3{font-family:var(--f-display);font-size:22px;line-height:1.25;margin:0;text-wrap:balance}
+.fighter .txt{font-size:15px;max-height:9.5em;overflow:auto;white-space:pre-wrap}
+.fighter .lbl{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+.fighter .win{margin-top:auto;padding:14px;font-size:16px}
+.progress{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:14px;color:var(--muted);font-size:14px}
+.dots{display:flex;gap:4px}
+.dots i{width:10px;height:10px;border-radius:50%;background:var(--surface-2);border:1px solid var(--line)}
+.dots i.on{background:var(--accent);border-color:var(--accent)}
+.kbd{font-family:var(--f-mono);font-size:12px;border:1px solid var(--line);border-radius:4px;padding:0 5px;background:var(--surface)}
+@media (max-width:760px){.arena{grid-template-columns:1fr}.vs{justify-self:center}}
+/* ranking */
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;min-width:860px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--surface-2);position:sticky;top:0}
+td.pos{font-family:var(--f-mono);font-weight:700;font-variant-numeric:tabular-nums;width:56px}
+tr.sep td{background:var(--bg);font-weight:700;font-family:var(--f-display);font-size:15px;padding-top:14px}
+tr.wait td{color:var(--muted)}
+.acts{display:flex;gap:4px;flex-wrap:nowrap}
+.acts button{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:13px}
+.acts select{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:2px 4px;font-size:13px}
+/* dialog */
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);max-width:760px;width:calc(100% - 32px);padding:0}
+dialog::backdrop{background:rgba(10,16,22,.55)}
+.dlg-h{padding:18px 20px 8px;display:flex;gap:10px;align-items:flex-start}
+.dlg-b{padding:0 20px 20px;max-height:70vh;overflow:auto}
+.dlg-b p{white-space:pre-wrap;margin:4px 0 14px}
+.dlg-b .lbl{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.confirm{margin-top:12px;padding:12px 14px;border:1px solid var(--alta);border-radius:10px;background:var(--alta-soft)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:600;z-index:20}
+@media (prefers-reduced-motion:no-preference){.fighter{transition:border-color .15s}.fighter:hover{border-color:var(--accent)}}
+.filerow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-top:10px}
+.filerow .fn{flex:1 1 260px;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.filerow select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px}
+.chip.ok{background:var(--baixa-soft);color:var(--baixa)} .chip.bad{background:var(--alta-soft);color:var(--alta)} .chip.na{background:var(--surface-2);color:var(--muted)}
+.chip.bd{background:var(--accent);color:var(--accent-ink)}
+.furados{font-size:13px;color:var(--muted);margin-top:2px}
+body{margin:0;font-family:var(--f-body)}[hidden]{display:none!important}
+.login{max-width:440px;margin:12vh auto 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px 24px;display:flex;flex-direction:column;gap:12px}
+.login h2{margin:0}.login input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px 12px;font-size:16px}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <h1>Priorização de Cards</h1>
+      <span class="row" style="gap:12px"><span class="meta" id="metaLine">Carregando…</span><button class="btn small" id="btnFull" hidden>Tela cheia</button><span class="meta" id="userBox"></span><button class="btn small" id="btnSair" hidden>Sair</button></span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-v="importar">Importar bases</button>
+      <button role="tab" data-v="triagem">Triagem <span class="count" id="c-triagem">0</span></button>
+      <button role="tab" data-v="barea">Batalha Área <span class="count" id="c-barea">0</span></button>
+      <button role="tab" data-v="bfinal">Batalha Final <span class="count" id="c-bfinal">0</span></button>
+      <button role="tab" data-v="ranking">Ranking <span class="count" id="c-ranking">0</span></button>
+      <button role="tab" data-v="inativos">Inativos <span class="count" id="c-inativos">0</span></button>
+      <button role="tab" data-v="concluidos">Concluídos <span class="count" id="c-concluidos">0</span></button>
+      <button role="tab" data-v="areas" data-gestor="1">Acompanhamento</button>
+    </nav>
+    <div class="picker" id="myAreaBar" style="margin:0;padding-top:8px" hidden></div>
+    <div class="picker" id="trkBar" style="margin:0;padding-bottom:10px" hidden></div>
+  </div>
+</header>
+
+<div class="wrap" id="loginWrap" hidden>
+  <div class="login">
+    <h2>Entrar</h2>
+    <p class="meta" id="loginMsg" style="margin:0">Digite seu e-mail da Demarco. Você vai receber um link de acesso, sem senha.</p>
+    <label class="meta" for="loginEmail">E-mail</label>
+    <input id="loginEmail" type="email" autocomplete="email" placeholder="nome@demarco.com.br">
+    <button class="btn primary" id="btnLogin">Enviar link de acesso</button>
+    <div class="err" id="loginErr" hidden></div>
+  </div>
+</div>
+<main class="wrap" id="mainWrap">
+  <div class="banner" id="areaBanner" hidden></div>
+  <div class="banner" id="roBanner" hidden>Você está vendo a priorização em modo leitura. Só quem tem acesso de edição pode importar, triar e decidir batalhas.</div>
+  <div class="banner" id="noDb" hidden>Seu e-mail não tem acesso a esta página. Entre com o e-mail da Demarco ou peça acesso ao gestor.</div>
+
+  <!-- IMPORTAR -->
+  <section class="view" id="v-importar" hidden>
+    <h2>Importar as bases dos boards</h2>
+    <p class="lead">Suba um ou mais exports (Sustentação FL, Melhorias FL, DM Center e DM Performance) e confira o board de cada arquivo. Cards inativos são ignorados. Cards concluídos vão para a aba Concluídos, com a avaliação de fila. Só os boards enviados são atualizados; os outros ficam como estão.</p>
+    <label class="drop" id="drop" for="fileIn">
+      <strong>Arraste os arquivos .xlsx aqui</strong>
+      <span class="meta">ou clique para escolher (pode selecionar vários)</span>
+      <input type="file" id="fileIn" accept=".xlsx,.xls" multiple hidden>
+    </label>
+    <div id="fileList"></div>
+    <div class="row" id="fileActions" style="margin-top:12px" hidden><button class="btn primary" id="btnCompare">Comparar com a priorização</button><button class="btn" id="btnClearFiles">Limpar arquivos</button></div>
+    <div id="impErr" class="err" hidden></div>
+    <div id="impPreview" hidden>
+      <div class="summary" id="impStats"></div>
+      <div id="impLists"></div>
+      <div class="row"><button class="btn primary" id="impApply">Aplicar importação</button><button class="btn" id="impCancel">Cancelar</button></div>
+    </div>
+    <div id="impLast" class="meta" style="margin-top:18px"></div>
+    <div class="list-mini" style="margin-top:22px"><h3>Restaurar backup</h3><p class="meta" style="margin:4px 0 10px">Use só na mudança do claude.ai para cá, ou para voltar uma cópia salva. Substitui os dados atuais.</p>
+      <label class="btn" for="restoreIn">Escolher arquivo de backup (.json)</label><input type="file" id="restoreIn" accept=".json" hidden>
+      <button class="btn" id="btnBackup">Baixar backup agora</button><div id="restoreBox"></div></div>
+  </section>
+
+  <!-- TRIAGEM -->
+  <section class="view" id="v-triagem" hidden>
+    <h2>Triagem rápida</h2>
+    <p class="lead">Confira a área e a trilha (Sustentação ou Melhoria) e classifique cada card em Alta, Média ou Baixa, ou marque para inativar. Cada trilha tem a própria priorização: cards de sustentação só competem entre si, e os de melhoria também. A ordem fina sai das batalhas: primeiro dentro de cada área, depois na batalha final.</p>
+    <div class="filters">
+      <input id="triSearch" type="search" placeholder="Buscar por número, título ou solicitante">
+      <select id="triTrk"><option value="">Todas as trilhas</option><option value="sust">Sustentação</option><option value="melh">Melhoria</option><option value="?">Trilha a definir</option><option value="sa">Sem área</option><option value="dev">Devolvidos pelas áreas</option></select>
+      <select id="triBoard"><option value="">Todos os boards</option></select>
+      <select id="triArea"><option value="">Todas as áreas</option></select>
+      <select id="triCli" hidden><option value="">Todos os clientes</option></select>
+      <select id="triCat"><option value="">Backlog e já iniciados</option><option value="backlog">Só backlog</option><option value="iniciado">Só já iniciados</option></select>
+      <button class="btn" id="triUndo" disabled>Desfazer última</button>
+    </div>
+    <datalist id="areasDL"></datalist>
+    <div class="grid" id="triGrid"></div>
+  </section>
+
+  <!-- BATALHA ÁREA -->
+  <section class="view" id="v-barea" hidden>
+    <h2>Batalha Área</h2>
+    <p class="lead">Cada área ordena os próprios cards, de todos os boards. O card em disputa é comparado só com alguns cards da mesma área e faixa, escolhidos para achar a posição dele com poucas batalhas.</p>
+    <div class="picker" id="areaPick"></div>
+    <div class="picker" id="areaTierPick"></div>
+    <div id="areaArena"></div>
+  </section>
+
+  <!-- BATALHA FINAL -->
+  <section class="view" id="v-bfinal" hidden>
+    <h2>Batalha Final</h2>
+    <p class="lead">Aqui todas as áreas e boards se cruzam. O #3 de uma área pode ficar acima do #1 de outra: a comparação é geral. A ordem que cada área definiu entre os próprios cards é mantida.</p>
+    <div class="picker" id="finalTierPick"></div>
+    <div id="finalNote" class="note"></div>
+    <div id="finalArena"></div>
+  </section>
+
+  <!-- RANKING -->
+  <section class="view" id="v-ranking" hidden>
+    <div class="row" style="margin-bottom:6px">
+      <div><h2>Ranking</h2></div>
+      <span class="spacer"></span>
+      <button class="btn" id="btnReset">Zerar…</button>
+      <button class="btn primary" id="btnExport">Exportar Excel</button>
+    </div>
+    <p class="lead">Cada trilha tem o próprio ranking. Geral: todos os cards da trilha na ordem da batalha final (Alta, Média, Baixa). Por board: os mesmos cards filtrados por board, na ordem geral. Por área: a ordem que cada área definiu.</p>
+    <div id="resetBox"></div>
+    <div class="picker" id="rkMode"></div>
+    <div class="picker" id="rkSub"></div>
+    <div class="filters"><input id="rkSearch" type="search" placeholder="Buscar no ranking"></div>
+    <div class="tbl-wrap"><table><thead id="rkHead"></thead><tbody id="rkBody"></tbody></table></div>
+  </section>
+
+  <!-- INATIVOS -->
+  <section class="view" id="v-inativos" hidden>
+    <div class="row" style="margin-bottom:6px">
+      <div><h2>Cards para inativar</h2></div>
+      <span class="spacer"></span>
+      <button class="btn primary" id="btnExportIn">Exportar lista</button>
+    </div>
+    <p class="lead">Relação dos cards que a reunião decidiu inativar no board. Quando a base do board chegar com o card inativo (ou sem ele), ele sai desta lista, porque já foi inativado.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Card</th><th>Título</th><th>Trilha</th><th>Board</th><th>Área</th><th>Solicitante</th><th>Categoria / fase</th><th>Marcado em</th><th>Ações</th></tr></thead><tbody id="inBody"></tbody></table></div>
+  </section>
+
+  <!-- ACOMPANHAMENTO -->
+  <section class="view" id="v-areas" hidden>
+    <h2>Acompanhamento das áreas</h2>
+    <p class="lead">Quanto cada área já triou e ordenou. Para cada área, copie o link e envie para quem vai fazer a triagem e a Batalha Área. A pessoa entra com o e-mail da Demarco, sem precisar de cadastro.</p>
+    <div class="summary" id="acStats"></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Área</th><th>Cards</th><th>Na triagem</th><th>Devolvidos</th><th>Na fila da batalha</th><th>Ordenados</th><th>Inativados</th><th>Última atividade</th><th>Link</th></tr></thead><tbody id="acBody"></tbody></table></div>
+    <p class="meta" id="acNote" style="margin-top:12px"></p>
+    <h2 style="margin-top:28px">Gestores</h2>
+    <p class="lead">E-mails com acesso de gestor (importar bases, definir área e trilha, Batalha Final). Um por linha. Qualquer outro e-mail @demarco.com.br entra como área.</p>
+    <textarea id="gestoresTxt" rows="4" style="width:100%;max-width:520px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px;font:inherit"></textarea>
+    <div class="row" style="margin-top:8px"><button class="btn primary" id="btnGestores">Salvar gestores</button></div>
+  </section>
+
+  <!-- CONCLUÍDOS -->
+  <section class="view" id="v-concluidos" hidden>
+    <div class="row" style="margin-bottom:6px">
+      <div><h2>Concluídos e aderência à fila</h2></div>
+      <span class="spacer"></span>
+      <button class="btn primary" id="btnExportCo">Exportar concluídos</button>
+    </div>
+    <p class="lead">Para cada card concluído que estava no ranking geral, a página confere se havia cards mais bem priorizados da mesma trilha ainda abertos na data de conclusão. Se havia, a fila foi furada. A referência é a foto do ranking geral que valia no dia da conclusão: a página guarda uma foto a cada dia em que o ranking geral muda.</p>
+    <div class="summary" id="coStats"></div>
+    <div class="filters">
+      <select id="coTrk"><option value="">Todas as trilhas</option><option value="sust">Sustentação</option><option value="melh">Melhoria</option></select>
+      <select id="coBoard"><option value="">Todos os boards</option></select>
+      <select id="coAval"><option value="">Todas as avaliações</option><option value="ok">Seguiu a fila</option><option value="furou">Furou a fila</option><option value="fora">Fora do ranking geral</option><option value="sem">Sem avaliação (concluído antes da priorização)</option></select>
+      <input id="coSearch" type="search" placeholder="Buscar por número ou título">
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>Card</th><th>Título</th><th>Trilha</th><th>Board</th><th>Área</th><th>Concluído em</th><th>Posição quando concluído</th><th>Avaliação</th></tr></thead><tbody id="coBody"></tbody></table></div>
+  </section>
+</main>
+
+<dialog id="dlg"><div class="dlg-h"><div style="flex:1;min-width:0"><div class="cid" id="dId"></div><h2 id="dTitle" style="margin-top:2px"></h2><div class="chips" id="dChips" style="margin-top:6px"></div></div><button class="btn small" id="dClose">Fechar</button></div><div class="dlg-b" id="dBody"></div></dialog>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const FAIXAS=["alta","media","baixa"];
+const FNOME={alta:"Alta",media:"Média",baixa:"Baixa"};
+const IMPACTO={"1":"Um usuário","2":"Grupo de usuários","3":"Todo o cliente","4":"Vários clientes","5":"Todos os clientes"};
+const BOARDS=["Sustentação FL","Melhorias FL","DM Center e DM Performance"];
+const SEM_AREA="Sem área",SEM_BOARD="Sem board";
+const TRILHAS=["sust","melh"],TNOME={sust:"Sustentação",melh:"Melhoria"};
+let TRK="sust";try{const t=localStorage.getItem("trk");if(TRILHAS.includes(t))TRK=t}catch(e){}
+let db=null, canWrite=true, isGestor=false, cards={}, AV={}, S=emptyState(), view="importar";
+const PAGE_URL=location.origin+location.pathname;
+let myArea=null;try{myArea=localStorage.getItem("myArea")||null}catch(e){}
+let writing=false, dirty=false, pendingImport=null, pendingFiles=[], undoStack=[];
+let selArea=null, selAreaTier=null, selFinalTier=null, rkMode="geral", rkKey=null;
+
+function emptyFin(){return {sust:{alta:[],media:[],baixa:[]},melh:{alta:[],media:[],baixa:[]}}}
+function emptyState(){return {v:4,devolvidos:{},trilhaManual:{},areaManual:{},semFaixa:[],inativos:[],area:{},filaArea:{},fin:emptyFin(),atual:null,posicionadoEm:{},finalEm:{},ultimaImportacao:null,importacoes:{},atualizadoEm:null}}
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/\s+/g," ").trim();
+const now=()=>new Date().toISOString();
+function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,3000)}
+function impLabel(v){const m=String(v||"").match(/^\s*(\d)/);if(!m)return v||"—";return m[1]+" · "+(IMPACTO[m[1]]||v)}
+function fmtDate(iso,noTime){if(!iso)return"";const d=new Date(iso);if(isNaN(d))return"";return d.toLocaleDateString("pt-BR")+(noTime?"":" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}))}
+function catOf(c){const f=norm(c&&c.fase);return !f||f.startsWith("backlog")?"backlog":"iniciado"}
+const CATNOME={backlog:"Backlog",iniciado:"Já iniciado"};
+function card(id){return cards[id]||{id,t:"(card não encontrado na base)"}}
+const AK=c=>(c&&((S.areaManual&&S.areaManual[c.id])||c.ar))||SEM_AREA;
+const BD=c=>(c&&c.bd)||SEM_BOARD;
+const TR=c=>(c&&((S.trilhaManual&&S.trilhaManual[c.id])||c.tr))||"";
+const AKEY=c=>TR(c)+"|"+AK(c);
+const AL=k=>String(k).slice(String(k).indexOf("|")+1);
+const KTR=k=>String(k).split("|")[0];
+const FIN=(tr=TRK)=>S.fin[tr];
+function migrate(d){
+  if(!d)return emptyState();
+  if(d.v===3)return d;
+  if(d.v===2){ // tudo que existia era Melhorias FL
+    const n=Object.assign(emptyState(),d,{v:3,trilhaManual:{},fin:emptyFin(),area:{},filaArea:{}});
+    n.fin.melh=d.final||{alta:[],media:[],baixa:[]};delete n.final;
+    for(const k of Object.keys(d.area||{}))n.area["melh|"+k]=d.area[k];
+    for(const k of Object.keys(d.filaArea||{}))n.filaArea["melh|"+k]=d.filaArea[k];
+    if(n.atual)n.atual=null;
+    return n;
+  }
+  return emptyState();
+}
+function autoTr(bd,t,col){
+  if(bd==="Sustentação FL")return "sust";if(bd==="Melhorias FL")return "melh";
+  const c=norm(col);if(c){if(c.includes("melhor"))return "melh";if(/sustent|corre|erro|bug|falha/.test(c))return "sust"}
+  return "";
+}
+const battlesFor=n=>Math.ceil(Math.log2(n+1));
+const sortPt=(a,b)=>a.localeCompare(b,"pt-BR");
+
+/* ---------- estrutura ---------- */
+function ensureArea(k){if(!S.area[k])S.area[k]={alta:[],media:[],baixa:[]};if(!S.filaArea[k])S.filaArea[k]={alta:[],media:[],baixa:[]}}
+function areaKeys(tr=TRK){return [...new Set([...Object.keys(S.area),...Object.keys(S.filaArea)])].filter(k=>KTR(k)===tr).sort((a,b)=>AL(a)===SEM_AREA?1:AL(b)===SEM_AREA?-1:sortPt(AL(a),AL(b)))}
+function boardKeys(tr=TRK){const s=new Set(Object.values(cards).filter(c=>!c.concl&&TR(c)===tr).map(BD));return [...BOARDS.filter(b=>s.has(b)),...[...s].filter(b=>!BOARDS.includes(b)).sort(sortPt)]}
+function inFinalSet(tr=TRK){return new Set(FAIXAS.flatMap(f=>FIN(tr)[f]))}
+function finalList(tr=TRK){return FAIXAS.flatMap(f=>FIN(tr)[f])}
+function removeEverywhere(id){
+  S.semFaixa=S.semFaixa.filter(i=>i!==id);S.inativos=S.inativos.filter(x=>x.id!==id);
+  for(const k of Object.keys(S.area))FAIXAS.forEach(f=>{S.area[k][f]=S.area[k][f].filter(i=>i!==id);S.filaArea[k][f]=S.filaArea[k][f].filter(i=>i!==id)});
+  TRILHAS.forEach(t=>FAIXAS.forEach(f=>S.fin[t][f]=S.fin[t][f].filter(i=>i!==id)));
+  delete S.posicionadoEm[id];delete S.finalEm[id];if(S.devolvidos)delete S.devolvidos[id];
+}
+function locate(id){
+  if(S.semFaixa.includes(id))return {w:"triagem"};
+  if(S.inativos.some(x=>x.id===id))return {w:"inativo"};
+  for(const k of Object.keys(S.area))for(const f of FAIXAS){
+    if(S.area[k][f].includes(id))return {w:"area",k,f};
+    if(S.filaArea[k][f].includes(id))return {w:"fila",k,f};
+  }
+  return {w:null};
+}
+function allPlaced(){const s=new Set(Object.keys(cards).filter(id=>!cards[id].concl));S.inativos.forEach(x=>s.add(x.id));for(const k of Object.keys(S.area))FAIXAS.forEach(f=>{S.area[k][f].forEach(i=>s.add(i));S.filaArea[k][f].forEach(i=>s.add(i))});return s}
+function areaPos(id){const l=locate(id);if(l.w!=="area")return null;const L=FAIXAS.flatMap(f=>S.area[l.k][f]);return L.indexOf(id)+1}
+function boardPos(id){const c=card(id),b=BD(c);const L=finalList(TR(c)||TRK).filter(i=>BD(card(i))===b);const i=L.indexOf(id);return i<0?null:i+1}
+function pushUndo(){undoStack.push(JSON.stringify(S));if(undoStack.length>30)undoStack.shift()}
+
+/* ---------- persistência ---------- */
+let fotoTimer=null,lastFotoKey={};
+function scheduleFoto(){if(!db||!canWrite||!isGestor)return;clearTimeout(fotoTimer);fotoTimer=setTimeout(()=>flushFoto().catch(()=>{}),2500)}
+async function flushFoto(){
+  clearTimeout(fotoTimer);if(!db||!canWrite||!isGestor)return;
+  for(const tr of TRILHAS){
+    const ordem=finalList(tr),day=localDay();const key=day+"|"+ordem.join(",");
+    if(key===lastFotoKey[tr])continue;
+    const ref=db.doc("fotos/"+tr+"-"+day);
+    if(lastFotoKey[tr]===undefined){const s=await ref.get();const prev=s.exists?(s.data().ordem||[]).join(","):null;
+      if(prev===ordem.join(",")||(!s.exists&&!ordem.length)){lastFotoKey[tr]=key;continue}}
+    await ref.set({data:day,tr,em:now(),ordem});lastFotoKey[tr]=key;
+  }
+}
+const slug=x=>norm(x).replace(/[^a-z0-9_\-.~:@+]+/g,"-").replace(/^-+|-+$/g,"")||"x";
+const areaPath=k=>"areas/"+slug(k.replace("|","-"));
+function stable(v){if(Array.isArray(v))return "["+v.map(stable).join(",")+"]";if(v&&typeof v==="object")return "{"+Object.keys(v).filter(k=>k!=="atualizadoEm"&&v[k]!==undefined).sort().map(k=>JSON.stringify(k)+":"+stable(v[k])).join(",")+"}";return JSON.stringify(v===undefined?null:v)}
+const remote={},pend={},writingDoc={};
+const docFor=p=>pend[p]||remote[p];
+function invKey(id){const c=card(id);return TR(c)&&AK(c)!==SEM_AREA?AKEY(c):null}
+function emptyF(){return {alta:[],media:[],baixa:[]}}
+function mainDocData(){return {v:4,trilhaManual:S.trilhaManual||{},areaManual:S.areaManual||{},inativos:S.inativos.filter(x=>!x.k).map(x=>({id:x.id,em:x.em})),fin:S.fin,atual:S.atual&&S.atual.modo==="final"?S.atual:null,finalEm:S.finalEm||{},ultimaImportacao:S.ultimaImportacao||null,importacoes:S.importacoes||{}}}
+function areaDocsData(){
+  const keys=new Set([...Object.keys(S.area),...Object.keys(S.filaArea)]);
+  S.inativos.forEach(x=>x.k&&keys.add(x.k));Object.values(S.devolvidos||{}).forEach(x=>keys.add(x.k));
+  for(const p of Object.keys(remote))if(p.startsWith("areas/")&&remote[p].k)keys.add(remote[p].k);
+  const out={};
+  for(const k of keys){
+    const area=S.area[k]||emptyF(),fila=S.filaArea[k]||emptyF();
+    const ids=new Set(FAIXAS.flatMap(f=>area[f]));const pos={};Object.keys(S.posicionadoEm||{}).forEach(id=>{if(ids.has(id))pos[id]=S.posicionadoEm[id]});
+    out[areaPath(k)]={k,area,fila,inativos:S.inativos.filter(x=>x.k===k).map(x=>({id:x.id,em:x.em})),devolvidos:Object.entries(S.devolvidos||{}).filter(([,d])=>d.k===k).map(([id,d])=>({id,em:d.em})),posicionadoEm:pos};
+  }
+  return out;
+}
+async function writeDoc(p,data){
+  const cur=docFor(p);if(cur&&stable(cur)===stable(data))return;
+  if(!cur&&p.startsWith("areas/")&&!FAIXAS.some(f=>data.area[f].length||data.fila[f].length)&&!data.inativos.length&&!data.devolvidos.length)return;
+  pend[p]=JSON.parse(JSON.stringify(data));
+  if(writingDoc[p])return;
+  writingDoc[p]=true;
+  try{
+    let last=null;
+    while(pend[p]&&pend[p]!==last){last=pend[p];await db.doc(p).set(Object.assign({},last,{atualizadoEm:now()}));remote[p]=last}
+    delete pend[p];
+  }catch(e){delete pend[p];
+    if(e&&e.code==="invalid_argument"){canWrite=false;$("#roBanner").hidden=false;rebuild();render()}
+    else toast("Não consegui salvar agora. A próxima ação tenta de novo.")}
+  finally{writingDoc[p]=false}
+}
+async function saveState(){
+  if(!db||!canWrite)return;
+  if(isGestor){writeDoc("state/main",mainDocData());scheduleFoto()}
+  const docs=areaDocsData();for(const p of Object.keys(docs))writeDoc(p,docs[p]);
+}
+function rebuild(){
+  const m=docFor("state/main")||{};
+  const keepAtual=S.atual&&S.atual.modo==="area"?S.atual:null;
+  const n=emptyState();
+  n.trilhaManual=m.trilhaManual||{};n.areaManual=m.areaManual||{};n.fin=m.fin||emptyFin();TRILHAS.forEach(t=>{if(!n.fin[t])n.fin[t]=emptyF()});
+  n.finalEm=m.finalEm||{};n.ultimaImportacao=m.ultimaImportacao||null;n.importacoes=m.importacoes||{};
+  n.inativos=(m.inativos||[]).map(x=>({id:x.id,em:x.em}));
+  n.atual=keepAtual||(m.atual&&m.atual.modo==="final"?m.atual:null);
+  const paths=new Set([...Object.keys(remote),...Object.keys(pend)]);
+  if(m.v===3&&![...paths].some(p=>p.startsWith("areas/"))){ // estado antigo num documento só
+    n.area=JSON.parse(JSON.stringify(m.area||{}));n.filaArea=JSON.parse(JSON.stringify(m.filaArea||{}));
+    n.inativos=(m.inativos||[]).map(x=>({id:x.id,em:x.em,k:invKey(x.id)}));n.posicionadoEm=Object.assign({},m.posicionadoEm||{});
+  }
+  for(const p of paths){if(!p.startsWith("areas/"))continue;const d=docFor(p);if(!d||!d.k)continue;
+    n.area[d.k]=d.area||emptyF();n.filaArea[d.k]=d.fila||emptyF();
+    (d.inativos||[]).forEach(x=>n.inativos.push({id:x.id,em:x.em,k:d.k}));
+    (d.devolvidos||[]).forEach(x=>n.devolvidos[x.id]={k:d.k,em:x.em});
+    Object.assign(n.posicionadoEm,d.posicionadoEm||{});
+  }
+  S=JSON.parse(JSON.stringify(n));
+  recomputeTriagem();
+}
+function recomputeTriagem(){
+  const placed=new Set();S.inativos.forEach(x=>placed.add(x.id));
+  for(const k of Object.keys(S.area))FAIXAS.forEach(f=>{S.area[k][f].forEach(i=>placed.add(i));(S.filaArea[k]?S.filaArea[k][f]:[]).forEach(i=>placed.add(i))});
+  for(const k of Object.keys(S.filaArea))FAIXAS.forEach(f=>S.filaArea[k][f].forEach(i=>placed.add(i)));
+  S.semFaixa=Object.keys(cards).filter(id=>!cards[id].concl&&!placed.has(id));
+}
+function commit(){recomputeTriagem();render();saveState()}
+async function loadCards(meta){
+  if(!meta||!meta.chunks){cards={};render();return}
+  const out={};
+  for(let i=0;i<meta.chunks;i++){const s=await db.doc("base/cards-"+i).get();if(s.exists)Object.assign(out,s.data().cards||{})}
+  cards=out;recomputeTriagem();render();
+}
+
+/* ---------- importação ---------- */
+const COLS={id:"id",t:"titulo",st:"status",fase:"fase atual",criado:"criado em",ar:"area",sol:"nome do solicitante",area:"area do solicitante",tipo:"[inicial] tipo de demanda",imp:"[inicial] nivel de impacto",cli:"[inicial] cliente(s) impactado(s)",prob:"[inicial] descreva o problema identificado.",aj:"[inicial] descreva o ajuste necessario.",web:"[inicial] qual menu web deve ser feito o ajuste?",app:"[inicial] qual menu app deve ser feito o ajuste?"};
+function clean(v,max){v=String(v??"").trim();if(v.replace(/[\s.\-0]/g,"").length<2||v.toLowerCase()==="nan")return"";return max&&v.length>max?v.slice(0,max)+"…":v}
+function parseBrDate(v){const m=String(v||"").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return null;const d=new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));return isNaN(d)?null:d.toISOString()}
+const isConcl=fase=>norm(fase).startsWith("conclu");
+function guessBoard(name){const n=norm(name).replace(/[_\-.]+/g," ");
+  if(/dm ?center|dm ?performance|dm ?gateway|modulo performance/.test(n))return BOARDS[2];
+  if(/projetos de clientes|projetos intern|melhoria/.test(n))return BOARDS[1];
+  if(/corre|ajustes|sustent/.test(n))return BOARDS[0];
+  return""}
+function parseWorkbook(buf,bd){
+  const wb=XLSX.read(buf,{type:"array"});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{defval:"",raw:false});
+  if(!rows.length)throw new Error("A planilha está vazia.");
+  const heads=Object.keys(rows[0]);const hmap={};heads.forEach(k=>hmap[norm(k)]=k);
+  const key={};for(const [f,h] of Object.entries(COLS))key[f]=hmap[h];
+  const alt=(f,...hs)=>{if(!key[f])key[f]=hs.map(h=>hmap[h]).find(Boolean)};
+  alt("cli","[inicial] clientes impactados");
+  alt("prob","[inicial] descricao","[inicial] descreva como encontrou o erro","[inicial] qual problema ou necessidade identificada?");
+  alt("aj","[inicial] descreva qual a melhoria necessaria.");
+  alt("web","[inicial] modulo do web");alt("app","[inicial] modulo do app");
+  key.sis=hmap["[inicial] sistema envolvido"];
+  key.dtc=heads.find(h=>norm(h).startsWith("[log] entrada em conclu"));
+  key.trl=heads.find(h=>["trilha","classificacao","classificacao do card"].includes(norm(h)));
+  if(!key.id||!key.t)throw new Error("não encontrei as colunas ID e Título. Confira se é o export do board.");
+  const ativos={},concl={};let inat=0;
+  for(const r of rows){
+    const id=String(r[key.id]||"").trim();if(!id)continue;
+    const g=f=>key[f]?r[key[f]]:"";
+    if(norm(g("st"))==="inativo"){inat++;continue}
+    const fase=clean(g("fase"));
+    if(norm(fase)==="descontinuado"){inat++;continue}
+    const tt=clean(g("t"))||"(sem título)";
+    const base={id,t:tt,bd,tr:autoTr(bd,tt,key.trl?r[key.trl]:""),fase,criado:clean(g("criado")),ar:String(g("ar")||"").trim(),sis:clean(key.sis?r[key.sis]:""),sol:clean(g("sol")),tipo:clean(g("tipo")),imp:clean(g("imp")),cli:clean(g("cli"))};
+    if(isConcl(fase)){const d=parseBrDate(g("dtc"));concl[id]=Object.assign(base,{concl:true,dtc:d,dtcFonte:d?"log":"importacao"})}
+    else{const menu=[clean(g("web")),clean(g("app"))].filter(Boolean);ativos[id]=Object.assign(base,{st:clean(g("st")),area:clean(g("area")),prob:clean(g("prob"),3000),aj:clean(g("aj"),3000),menu:menu.join(" / ")})}
+  }
+  return {ativos,concl,inat,temArea:!!key.ar,temData:!!key.dtc,temTrilha:!!key.trl};
+}
+function addFiles(list){
+  $("#impErr").hidden=true;$("#impPreview").hidden=true;pendingImport=null;
+  [...list].forEach(file=>{const rd=new FileReader();const it={name:file.name,bd:guessBoard(file.name),buf:null,err:null};pendingFiles.push(it);
+    rd.onload=()=>{it.buf=new Uint8Array(rd.result);renderFiles()};rd.onerror=()=>{it.err="Não consegui ler o arquivo.";renderFiles()};rd.readAsArrayBuffer(file)});
+  renderFiles();
+}
+function renderFiles(){
+  $("#fileActions").hidden=!pendingFiles.length;
+  $("#fileList").innerHTML=pendingFiles.map((f,i)=>`<div class="filerow"><span class="fn">${esc(f.name)}</span>
+    <label class="meta" for="fb${i}">Board</label><select id="fb${i}" data-fbd="${i}"><option value="">Escolha o board…</option>${BOARDS.map(b=>`<option${b===f.bd?" selected":""}>${esc(b)}</option>`).join("")}</select>
+    ${f.err?`<span class="chip bad">${esc(f.err)}</span>`:f.buf?`<span class="chip ok">Pronto</span>`:`<span class="chip na">Lendo…</span>`}
+    <button class="btn small" data-frm="${i}">Remover</button></div>`).join("");
+}
+function compareFiles(){
+  $("#impErr").hidden=true;$("#impPreview").hidden=true;
+  try{
+    if(!pendingFiles.length)throw new Error("Escolha pelo menos um arquivo.");
+    if(pendingFiles.some(f=>!f.buf))throw new Error("Aguarde a leitura dos arquivos.");
+    const miss=pendingFiles.find(f=>!f.bd);if(miss)throw new Error(`Escolha o board do arquivo ${miss.name}.`);
+    const bds=pendingFiles.map(f=>f.bd);const dup=bds.find((b,i)=>bds.indexOf(b)!==i);if(dup)throw new Error(`Há dois arquivos para o board ${dup}. Envie um arquivo por board.`);
+    const ativos={},concl={},avisos=[];let inat=0;
+    for(const f of pendingFiles){
+      let p;try{p=parseWorkbook(f.buf,f.bd)}catch(e){throw new Error(`${f.name}: ${e.message}`)}
+      for(const [id,c] of Object.entries(p.ativos)){if(ativos[id]||concl[id])avisos.push(`${id} aparece em mais de um arquivo; ficou o de ${f.bd}.`);if(!c.tr&&cards[id]&&cards[id].tr)c.tr=cards[id].tr;if(!p.temArea&&cards[id])c.ar=cards[id].ar||"";ativos[id]=c}
+      for(const [id,c] of Object.entries(p.concl)){if(!c.tr&&cards[id]&&cards[id].tr)c.tr=cards[id].tr;if(!p.temArea&&cards[id])c.ar=cards[id].ar||"";if(!ativos[id])concl[id]=c}
+      inat+=p.inat;
+      if(!["Sustentação FL","Melhorias FL"].includes(f.bd)){const n=Object.values(p.ativos).filter(c=>!c.tr&&!cards[c.id]).length;if(n)avisos.push(`${f.name}: ${n} cards novos sem trilha. Escolha Sustentação ou Melhoria na triagem.`)}
+      if(!p.temArea){const nv=Object.values(p.ativos).filter(c=>!cards[c.id]).length;avisos.push(`${f.name}: sem coluna "Área". Cards já conhecidos mantêm a área que tinham${nv?`; ${nv} cards novos entram como "${SEM_AREA}"`:""}.`)}
+      if(!p.temData&&Object.keys(p.concl).length)avisos.push(`${f.name}: não encontrei a data de entrada em Concluído. Usei a data da importação.`);
+    }
+    const boardsIn=new Set(bds);
+    const placed=allPlaced(),first=!placed.size;
+    const ids=Object.keys(ativos);
+    const novos=ids.filter(i=>!placed.has(i));
+    const inIds=new Set(S.inativos.map(x=>x.id));
+    const doBoard=i=>{const c=cards[i];return !c||boardsIn.has(BD(c))};
+    const conclRank=[...placed].filter(i=>concl[i]&&!inIds.has(i));
+    const saidas=[...placed].filter(i=>!ativos[i]&&!concl[i]&&!inIds.has(i)&&doBoard(i));
+    const inConf=[...inIds].filter(i=>!ativos[i]&&(doBoard(i)||concl[i]));
+    const mudouArea=[...placed].filter(i=>{if(!ativos[i]||!cards[i]||inIds.has(i)||S.semFaixa.includes(i))return false;const l=locate(i);return l.k&&TR(ativos[i])&&l.k!==AKEY(ativos[i])});
+    const nIni=ids.filter(i=>catOf(ativos[i])==="iniciado").length;
+    pendingImport={files:pendingFiles.map(f=>({name:f.name,bd:f.bd})),boardsIn:[...boardsIn],ativos,concl,novos,saidas,inConf,mudouArea,conclRank};
+    const st=first?[["Cards ativos",ids.length],["Em backlog",ids.length-nIni],["Já iniciados",nIni],["Concluídos",Object.keys(concl).length],["Inativos ignorados",inat]]
+      :[["Cards ativos",ids.length],["Novos (vão para triagem)",novos.length],["Concluídos desde a última base",conclRank.length],["Saíram da base",saidas.length],["Inativação confirmada",inConf.length],["Mudaram de área/trilha",mudouArea.length],["Inativos ignorados",inat]];
+    $("#impStats").innerHTML=st.map(([l,n])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join("");
+    const li=(arr,src)=>arr.slice(0,200).map(i=>`<li><span class="cid">${esc(i)}</span> ${esc((src[i]||cards[i]||{}).t||"")} <span class="meta">· ${esc(BD(src[i]||cards[i]))}</span></li>`).join("");
+    let lists=avisos.length?`<div class="list-mini"><h3>Avisos</h3><ul>${avisos.slice(0,50).map(a=>`<li>${esc(a)}</li>`).join("")}</ul></div>`:"";
+    lists+=`<p class="meta">Boards nesta importação: ${[...boardsIn].map(esc).join(", ")}. Os demais boards ficam como estão.</p>`;
+    if(first)lists+=`<p class="meta">Primeira importação: todos os cards ativos vão para a triagem.</p>`;
+    else{
+      if(novos.length)lists+=`<div class="list-mini"><h3>Novos</h3><ul>${li(novos,ativos)}</ul></div>`;
+      if(conclRank.length)lists+=`<div class="list-mini"><h3>Concluídos (saem da priorização e vão para a aba Concluídos com a avaliação)</h3><ul>${li(conclRank,concl)}</ul></div>`;
+      if(saidas.length)lists+=`<div class="list-mini"><h3>Saem da priorização (não vieram ativos na base)</h3><ul>${li(saidas,cards)}</ul></div>`;
+      if(inConf.length)lists+=`<div class="list-mini"><h3>Saem da lista de inativos (já inativados)</h3><ul>${li(inConf,cards)}</ul></div>`;
+      if(mudouArea.length)lists+=`<div class="list-mini"><h3>Mudaram de área ou trilha (refazem a batalha na área ou trilha nova, mesma faixa)</h3><ul>${mudouArea.map(i=>`<li><span class="cid">${esc(i)}</span> ${esc(TNOME[KTR(locate(i).k)])} · ${esc(AL(locate(i).k))} → ${esc(TNOME[TR(ativos[i])])} · ${esc(AK(ativos[i]))}</li>`).join("")}</ul></div>`;
+    }
+    $("#impLists").innerHTML=lists;
+    $("#impPreview").hidden=false;$("#impApply").disabled=!canWrite||!db;
+  }catch(e){$("#impErr").textContent=e.message||"Não consegui ler os arquivos.";$("#impErr").hidden=false}
+}
+function localDay(iso){const d=iso?new Date(iso):new Date();const p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`}
+const dayBr=day=>day?day.split("-").reverse().join("/"):"";
+function fotoFor(fotos,iso,tr){const day=localDay(iso);let best=null;for(const f of fotos)if((f.tr||"melh")===tr&&f.data<=day&&(!best||f.data>best.data))best=f;return best}
+function evaluate(P,fotos){
+  // avaliação contra a foto do ranking geral que valia na data de conclusão de cada card
+  const out={},ts=now(),cur=new Set(P.conclRank);
+  const dtcOf=y=>{if(P.concl[y])return P.concl[y].dtc||ts;if(AV[y])return AV[y].dtc||AV[y].avaliadoEm;const c=cards[y];if(c&&c.concl)return c.dtc||null;return null};
+  const bdOf=y=>BD(P.ativos[y]||P.concl[y]||cards[y]||AV[y]);
+  for(const id of Object.keys(P.concl)){
+    if(AV[id])continue;
+    const c=P.concl[id],dx=c.dtc||ts;
+    const l0=locate(id),trs=[...new Set([l0.k?KTR(l0.k):null,TR(c),...TRILHAS].filter(Boolean))];
+    let foto=null,tr=TR(c)||(l0.k?KTR(l0.k):"");
+    for(const t of trs){const f=fotoFor(fotos,dx,t);if(f&&f.ordem.includes(id)){foto=f;tr=t;break}if(!foto&&f&&t===tr)foto=f}
+    const L=foto?foto.ordem:[],i=L.indexOf(id);
+    const rec={id,t:c.t,bd:c.bd,ar:c.ar,tr,dtc:c.dtc,dtcFonte:c.dtcFonte,avaliadoEm:ts,fotoData:foto?foto.data:null};
+    if(i>=0){
+      const acima=L.slice(0,i).filter(y=>{
+        if(P.ativos[y])return true;                          // segue aberto
+        const dy=dtcOf(y);if(dy)return dy>dx;                // concluído depois dele
+        const cy=cards[y];if(cy&&!cy.concl&&!P.boardsIn.includes(BD(cy)))return true; // board não reimportado: segue aberto
+        return false;                                        // saiu da base ou foi inativado
+      });
+      const LB=L.filter(y=>bdOf(y)===c.bd);
+      Object.assign(rec,{aval:acima.length?"furou":"ok",posGeral:i+1,totalGeral:L.length,posBoard:LB.indexOf(id)+1,
+        nFurados:acima.length,nFuradosBoard:acima.filter(y=>bdOf(y)===c.bd).length,
+        furados:acima.slice(0,12).map(y=>({id:y,pos:L.indexOf(y)+1,bd:bdOf(y)}))});
+    }else if(cur.has(id)){
+      const l=locate(id);
+      if(!foto)Object.assign(rec,{aval:"sem"});else Object.assign(rec,{aval:"fora",onde:foto?(l.w==="area"?"Ordenado só na área":l.w==="fila"?"Aguardando batalha da área":l.w==="triagem"?"Na triagem":"Fora da priorização")+` na foto de ${dayBr(foto.data)}`:"Concluído antes da primeira foto do ranking"});
+    }else continue;
+    out[id]=rec;
+  }
+  return out;
+}
+async function applyImport(){
+  const P=pendingImport;if(!P||!db)return;
+  $("#impApply").disabled=true;$("#impApply").textContent="Aplicando…";
+  try{
+    await flushFoto();
+    const fs=await db.collection("fotos").get();
+    const newAval=evaluate(P,fs.docs.map(d=>d.data()).filter(f=>f&&f.data&&Array.isArray(f.ordem)));
+    const keep=Object.fromEntries(Object.entries(cards).filter(([id,c])=>!P.boardsIn.includes(BD(c))&&!P.ativos[id]&&!P.concl[id]));
+    const all=Object.assign(keep,P.concl,P.ativos);
+    const chunks=[];let cur={},size=0;
+    for(const [id,c] of Object.entries(all)){const n=JSON.stringify(c).length;if(size+n>200000&&size>0){chunks.push(cur);cur={};size=0}cur[id]=c;size+=n}
+    chunks.push(cur);
+    const old=await db.doc("base/meta").get();const oldN=old.exists?(old.data().chunks||0):0;
+    for(let i=0;i<chunks.length;i++)await db.doc("base/cards-"+i).set({cards:chunks[i]});
+    for(let i=chunks.length;i<oldN;i++)await db.doc("base/cards-"+i).delete();
+    await db.doc("base/meta").set({chunks:chunks.length,em:now(),arquivos:P.files});
+    if(Object.keys(newAval).length){AV=Object.assign({},AV,newAval);await db.doc("state/avaliacoes").set({itens:AV})}
+    pushUndo();
+    P.conclRank.forEach(removeEverywhere);P.saidas.forEach(removeEverywhere);P.inConf.forEach(removeEverywhere);
+    P.mudouArea.forEach(id=>{const l=locate(id);if(l.f){removeEverywhere(id);const k=AKEY(P.ativos[id]);ensureArea(k);S.filaArea[k][l.f].push(id)}});
+    S.semFaixa=S.semFaixa.concat(P.novos);
+    S.atual=null;
+    const em=now();S.importacoes=S.importacoes||{};
+    P.files.forEach(f=>S.importacoes[f.bd]={em,arquivo:f.name});
+    S.ultimaImportacao={em,arquivo:P.files.map(f=>f.name).join(", "),boards:P.boardsIn,total:Object.keys(P.ativos).length,novos:P.novos.length,saidas:P.saidas.length,concluidos:P.conclRank.length,inativosConfirmados:P.inConf.length};
+    cards=all;pendingImport=null;pendingFiles=[];renderFiles();$("#impPreview").hidden=true;
+    commit();toast(`Importação aplicada: ${P.novos.length} novos, ${P.conclRank.length} concluídos, ${P.saidas.length} saíram.`);
+    if(P.novos.length)go("triagem");else if(P.conclRank.length)go("concluidos");
+  }catch(e){toast(e&&e.code==="quota_exceeded"?"O armazenamento da priorização está cheio.":"Não consegui gravar a base. Tente de novo.")}
+  finally{$("#impApply").disabled=false;$("#impApply").textContent="Aplicar importação"}
+}
+
+/* ---------- triagem ---------- */
+function triar(id,f){
+  if(!canWrite)return;
+  if(f!=="inativar"&&!TR(card(id)))return toast("Defina a trilha do card antes da faixa.");
+  pushUndo();removeEverywhere(id);
+  if(f==="inativar"){S.inativos.push({id,em:now(),k:invKey(id)});toast(`${id} foi para a lista de inativos.`)}
+  else{const k=AKEY(card(id));ensureArea(k);S.filaArea[k][f].push(id)}
+  commit();
+}
+function devolver(id){if(!canWrite)return;const c=card(id);const k=AKEY(c);pushUndo();S.devolvidos=S.devolvidos||{};S.devolvidos[id]={k,em:now()};commit();toast(`${id} foi devolvido ao gestor para revisar a área.`)}
+function manterArea(id){if(!isGestor)return;pushUndo();delete S.devolvidos[id];commit();toast(`${id} continua em ${AK(card(id))}.`)}
+function allAreaNames(){const s=new Set();Object.values(cards).forEach(c=>{const a=AK(c);if(a!==SEM_AREA)s.add(a)});Object.values(S.areaManual||{}).forEach(a=>a&&s.add(a));return [...s].sort(sortPt)}
+function setArea(id,val){
+  if(!isGestor)return;val=String(val||"").trim().replace(/\s+/g," ");
+  if(val){const m=allAreaNames().find(a=>norm(a)===norm(val));if(m)val=m}
+  const c=card(id);const before=AK(c);
+  const novo=val||c.ar||SEM_AREA;if(novo===before)return;
+  pushUndo();S.areaManual=S.areaManual||{};if(S.devolvidos)delete S.devolvidos[id];
+  if(val&&val!==SEM_AREA)S.areaManual[id]=val;else delete S.areaManual[id];
+  const l=locate(id);
+  if(l.f){removeEverywhere(id);const k=AKEY(card(id));ensureArea(k);S.filaArea[k][l.f].unshift(id);S.atual=null;toast(`${id} agora é da área ${AK(card(id))} e vai para a Batalha Área dela.`)}
+  else toast(`${id}: área ${AK(card(id))}.`);
+  commit();
+}
+function setTrilha(id,tr){
+  if(!isGestor)return;pushUndo();if(S.devolvidos)delete S.devolvidos[id];
+  S.trilhaManual=S.trilhaManual||{};S.trilhaManual[id]=tr;
+  const l=locate(id);
+  if(l.f){removeEverywhere(id);const k=AKEY(card(id));ensureArea(k);S.filaArea[k][l.f].unshift(id);S.atual=null;toast(`${id} agora é ${TNOME[tr]} e vai para a Batalha Área dessa trilha.`)}
+  commit();
+}
+function undo(){const u=undoStack.pop();if(!u)return;S=JSON.parse(u);commit();toast("Última ação desfeita.")}
+const inMyArea=c=>!myArea||AK(c)===myArea;
+function chipsHtml(c,o={}){
+  const ch=[];
+  if(o.tier)ch.push(`<span class="chip f-${o.tier}">${FNOME[o.tier]}</span>`);
+  const tr=TR(c);ch.push(tr?`<span class="chip">${TNOME[tr]}</span>`:`<span class="chip bad">Trilha a definir</span>`);
+  ch.push(`<span class="chip bd">${esc(BD(c))}</span>`);
+  if(c.sis)ch.push(`<span class="chip">${esc(c.sis)}</span>`);
+  ch.push(`<span class="chip ar">${esc(AK(c))}</span>`);
+  if(catOf(c)==="iniciado")ch.push(`<span class="chip ini" title="${esc(c.fase)}">Já iniciado</span>`);
+  return ch.join("");
+}
+function fillSelect(sel,vals,label){const cur=sel.value;sel.innerHTML=`<option value="">${label}</option>`+[...new Set(vals.filter(Boolean))].sort(sortPt).map(v=>`<option${v===cur?" selected":""}>${esc(v)}</option>`).join("")}
+function renderTriagem(){
+  let all=S.semFaixa.map(card);
+  const devN=all.filter(c=>S.devolvidos[c.id]&&inMyArea(c)).length;
+  if(!isGestor)all=all.filter(c=>inMyArea(c)&&TR(c)&&AK(c)!==SEM_AREA&&!S.devolvidos[c.id]);
+  else if(myArea)all=all.filter(inMyArea);
+  $("#areasDL").innerHTML=allAreaNames().map(a=>`<option value="${esc(a)}"></option>`).join("");
+  fillSelect($("#triBoard"),all.map(BD),"Todos os boards");fillSelect($("#triArea"),all.map(AK),"Todas as áreas");fillSelect($("#triCli"),all.map(c=>c.cli),"Todos os clientes");
+  const ftr=$("#triTrk").value,q=norm($("#triSearch").value),fb=$("#triBoard").value,fa=$("#triArea").value,fc=$("#triCli").value,fk=$("#triCat").value;
+  const list=all.filter(c=>(!ftr||(ftr==="?"?!TR(c):ftr==="sa"?AK(c)===SEM_AREA:ftr==="dev"?!!S.devolvidos[c.id]:TR(c)===ftr))&&(!fb||BD(c)===fb)&&(!fa||AK(c)===fa)&&(!fk||catOf(c)===fk)&&(!fc||c.cli===fc)&&(!q||norm(c.id+" "+c.t+" "+c.sol).includes(q)));
+  $("#triUndo").disabled=!undoStack.length||!canWrite;
+  const devMsg=!isGestor&&devN?`<p class="meta" style="grid-column:1/-1">${devN} card${devN>1?"s":""} devolvido${devN>1?"s":""} aguardando o gestor revisar a área.</p>`:"";
+  if(!all.length){$("#triGrid").innerHTML=devMsg+`<div class="empty" style="grid-column:1/-1"><b>Nenhum card esperando triagem${myArea?" em "+esc(myArea):""}</b>${Object.keys(cards).length?"Todos os cards já foram classificados. Siga para a Batalha Área.":"Nenhuma base importada ainda."}</div>`;return}
+  if(!list.length){$("#triGrid").innerHTML=`<div class="empty" style="grid-column:1/-1"><b>Nenhum card com esse filtro</b>Limpe os filtros para ver os ${all.length} cards.</div>`;return}
+  const dis=canWrite?"":"disabled",gdis=isGestor&&canWrite?"":"disabled";
+  $("#triGrid").innerHTML=list.map(c=>`<article class="card">
+    <div class="row"><span class="cid">${esc(c.id)}</span><span class="spacer"></span><span class="meta">${esc(c.fase)}</span></div>
+    <h4>${esc(c.t)}</h4><div class="chips">${chipsHtml(c)}</div>
+    <div class="who">${esc(c.sol||"Solicitante não informado")}${c.criado?" · "+esc(c.criado):""}</div>
+    ${c.prob?`<div class="prob">${esc(c.prob)}</div>`:""}
+    <button class="link" data-det="${esc(c.id)}">Ver descrição completa</button>
+    ${S.devolvidos[c.id]?`<div class="row" style="gap:6px"><span class="chip bad">Devolvido por ${esc(AL(S.devolvidos[c.id].k))} em ${fmtDate(S.devolvidos[c.id].em,true)}</span>${isGestor?`<button class="btn small" data-keep="${esc(c.id)}" ${gdis}>Manter nesta área</button>`:""}</div>`:""}
+    ${isGestor?`<div class="row" style="gap:6px"><label class="meta" for="ar-${esc(c.id)}">Área:</label><input id="ar-${esc(c.id)}" list="areasDL" data-sar="${esc(c.id)}" value="${AK(c)===SEM_AREA?"":esc(AK(c))}" placeholder="Escolha ou digite a área" style="flex:1;min-width:0;border:1px solid ${AK(c)===SEM_AREA?"var(--alta)":"var(--line)"};background:var(--surface);border-radius:8px;padding:5px 8px" ${gdis}></div>
+    <div class="row" style="gap:6px"><span class="meta">Trilha:</span>${TRILHAS.map(t=>`<button class="btn small" data-str="${esc(c.id)}" data-t="${t}" aria-pressed="${TR(c)===t}" style="${TR(c)===t?"border-color:var(--accent);border-width:2px":""}" ${gdis}>${TNOME[t]}</button>`).join("")}</div>`
+    :`<button class="link" data-devolver="${esc(c.id)}" ${dis}>Não é da minha área: devolver ao gestor</button>`}
+    <div class="tri"><button class="a" data-tri="${esc(c.id)}" data-f="alta" ${dis}>Alta</button><button class="m" data-tri="${esc(c.id)}" data-f="media" ${dis}>Média</button><button class="b" data-tri="${esc(c.id)}" data-f="baixa" ${dis}>Baixa</button><button class="i" data-tri="${esc(c.id)}" data-f="inativar" ${dis}>Inativar</button></div>
+  </article>`).join("");
+}
+
+/* ---------- batalhas ---------- */
+function validAtual(modo){
+  const a=S.atual;if(!a||a.modo!==modo)return false;
+  if(a.tr!==TRK)return false;
+  if(modo==="area")return !!(S.filaArea[a.k]&&S.filaArea[a.k][a.f][0]===a.id&&a.hi<=S.area[a.k][a.f].length);
+  return !inFinalSet().has(a.id)&&locate(a.id).w==="area"&&a.hi<=FIN()[a.f].length;
+}
+function pendArea(k){return FAIXAS.reduce((n,f)=>n+(S.filaArea[k]?S.filaArea[k][f].length:0),0)}
+function ensureAtualArea(){
+  if(validAtual("area"))return S.atual;
+  if(S.atual&&S.atual.modo==="area"&&S.atual.tr===TRK)S.atual=null;
+  if(selArea&&KTR(selArea)!==TRK)selArea=null;
+  const keys=areaKeys();
+  const k=(selArea&&pendArea(selArea)&&(!myArea||AL(selArea)===myArea))?selArea:keys.filter(x=>!myArea||AL(x)===myArea).find(x=>pendArea(x));
+  if(!k)return null;
+  const f=(selAreaTier&&S.filaArea[k][selAreaTier].length)?selAreaTier:FAIXAS.find(x=>S.filaArea[k][x].length);
+  while(S.filaArea[k][f].length&&!S.area[k][f].length)placeArea(k,f,S.filaArea[k][f][0],0);
+  if(!S.filaArea[k][f].length)return ensureAtualArea();
+  S.atual={modo:"area",tr:TRK,k,f,id:S.filaArea[k][f][0],lo:0,hi:S.area[k][f].length,passos:[]};
+  return S.atual;
+}
+function placeArea(k,f,id,pos){S.filaArea[k][f]=S.filaArea[k][f].filter(i=>i!==id);S.area[k][f].splice(pos,0,id);S.posicionadoEm[id]=now()}
+function finalCandidate(f){
+  const fin=inFinalSet(),keys=areaKeys();
+  const max=Math.max(0,...keys.map(k=>S.area[k][f].length));
+  for(let r=0;r<max;r++)for(const k of keys){const id=S.area[k][f][r];if(id&&!fin.has(id))return {id,k}}
+  return null;
+}
+function finalBounds(id,k,f){
+  const L=S.area[k][f],F=FIN()[f],fin=new Set(F),i=L.indexOf(id);
+  let lo=0,hi=F.length;
+  for(let j=i-1;j>=0;j--)if(fin.has(L[j])){lo=F.indexOf(L[j])+1;break}
+  for(let j=i+1;j<L.length;j++)if(fin.has(L[j])){hi=F.indexOf(L[j]);break}
+  if(lo>hi){lo=0;hi=F.length}
+  return [lo,hi];
+}
+function pendFinal(f){const fin=inFinalSet();let n=0;for(const k of areaKeys())n+=S.area[k][f].filter(i=>!fin.has(i)).length;return n}
+function ensureAtualFinal(){
+  if(validAtual("final"))return S.atual;
+  if(S.atual&&S.atual.modo==="final"&&S.atual.tr===TRK)S.atual=null;
+  const f=(selFinalTier&&pendFinal(selFinalTier))?selFinalTier:FAIXAS.find(x=>pendFinal(x));
+  if(!f)return null;
+  for(;;){
+    const c=finalCandidate(f);if(!c)return ensureAtualFinal();
+    const [lo,hi]=finalBounds(c.id,c.k,f);
+    if(lo===hi){placeFinal(f,c.id,lo);continue}
+    S.atual={modo:"final",tr:TRK,k:c.k,f,id:c.id,lo,hi,passos:[]};return S.atual;
+  }
+}
+function placeFinal(f,id,pos){FIN()[f].splice(pos,0,id);S.finalEm[id]=now()}
+function decide(novoVence){
+  const a=S.atual;if(!a||!canWrite)return;
+  if(view==="barea"&&a.modo!=="area")return;if(view==="bfinal"&&a.modo!=="final")return;if(a.tr!==TRK)return;
+  const mid=Math.floor((a.lo+a.hi)/2);
+  a.passos.push({lo:a.lo,hi:a.hi});
+  if(novoVence)a.hi=mid;else a.lo=mid+1;
+  if(a.lo>=a.hi){
+    if(a.modo==="area"){placeArea(a.k,a.f,a.id,a.lo);toast(`${a.id} ficou em ${a.lo+1}º na faixa ${FNOME[a.f]} de ${AL(a.k)}.`)}
+    else{placeFinal(a.f,a.id,a.lo);toast(`${a.id} ficou em ${a.lo+1}º na faixa ${FNOME[a.f]} do ranking de ${TNOME[TRK]}.`)}
+    S.atual=null;
+  }
+  commit();
+}
+function undoStep(){const a=S.atual;if(!a||!a.passos.length)return;{const p=a.passos.pop();if(Array.isArray(p)){a.lo=p[0];a.hi=p[1]}else{a.lo=p.lo;a.hi=p.hi}}commit()}
+function skipArea(){const a=S.atual;if(!a||a.modo!=="area")return;const q=S.filaArea[a.k][a.f];S.filaArea[a.k][a.f]=q.filter(i=>i!==a.id).concat(a.id);S.atual=null;commit()}
+function backToTriage(id){pushUndo();removeEverywhere(id);S.semFaixa.unshift(id);S.atual=null;commit();toast(`${id} voltou para a triagem.`)}
+function fighterHtml(c,role,side,extra){
+  return `<div class="fighter"><div class="role">${role}</div><div class="row"><span class="cid">${esc(c.id)}</span><span class="meta">${esc(c.fase||"")}</span></div>
+  <h3>${esc(c.t)}</h3><div class="chips">${chipsHtml(c)}</div>${extra||""}
+  <div class="meta">${esc(c.sol||"Solicitante não informado")}${c.area?" · "+esc(c.area):""}${c.criado?" · aberto em "+esc(c.criado):""}</div>
+  ${c.prob?`<div class="lbl">Problema</div><div class="txt">${esc(c.prob)}</div>`:(c.aj?`<div class="lbl">Ajuste pedido</div><div class="txt">${esc(c.aj)}</div>`:"")}
+  <button class="link" data-det="${esc(c.id)}">Ver descrição completa</button>
+  <button class="btn primary win" data-win="${side}" ${canWrite?"":"disabled"}>Este é mais prioritário <span class="kbd">${side==="L"?"←":"→"}</span></button></div>`;
+}
+function progressHtml(a,label,btns){
+  const feitas=a.passos.length,rest=battlesFor(a.hi-a.lo);
+  return `<div class="progress"><span>${label}</span><span class="dots">${Array.from({length:feitas+rest},(_,i)=>`<i class="${i<feitas?"on":""}"></i>`).join("")}</span>
+    <span>faltam até ${rest} batalha${rest>1?"s":""}</span><span class="spacer"></span>
+    <button class="btn small" id="bUndo" ${feitas&&canWrite?"":"disabled"}>Desfazer <span class="kbd">U</span></button>${btns}</div>`;
+}
+function snapshotChange(fn){const b=JSON.stringify([S.area,S.filaArea,S.fin,S.atual]);const r=fn();if(canWrite&&JSON.stringify([S.area,S.filaArea,S.fin,S.atual])!==b)saveState();return r}
+function renderBArea(){
+  const keys=areaKeys().filter(k=>!myArea||AL(k)===myArea);
+  const a=canWrite?snapshotChange(ensureAtualArea):(S.atual&&S.atual.modo==="area"&&S.atual.tr===TRK?S.atual:null);
+  const curK=a?a.k:selArea;
+  $("#areaPick").innerHTML=keys.length?`<span class="lbl2">Área</span>`+keys.map(k=>`<button data-area="${esc(k)}" aria-pressed="${k===curK}">${esc(AL(k))} · ${pendArea(k)}</button>`).join(""):"";
+  $("#areaTierPick").innerHTML=curK&&S.filaArea[curK]?`<span class="lbl2">Faixa</span>`+FAIXAS.map(f=>`<button class="f-${f}" data-atier="${f}" aria-pressed="${(a?a.f:selAreaTier)===f}">${FNOME[f]} · ${S.filaArea[curK][f].length} na fila</button>`).join(""):"";
+  const box=$("#areaArena");
+  const triN=S.semFaixa.filter(id=>inMyArea(card(id))).length;
+  if(!a){box.innerHTML=`<div class="empty"><b>Nenhuma batalha de área pendente${myArea?" em "+esc(myArea)+" · "+TNOME[TRK]:""}</b>${triN?`Ainda há ${triN} cards na triagem.`:keys.length?"Todas as áreas desta trilha estão ordenadas. Siga para a Batalha Final.":`Nenhum card de ${TNOME[TRK]} na Batalha Área ainda. Faça a triagem ou troque a trilha no topo.`}</div>`;return}
+  const R=S.area[a.k][a.f],mid=Math.floor((a.lo+a.hi)/2);
+  box.innerHTML=progressHtml(a,`<b style="color:var(--fg)">${esc(a.id)}</b> buscando posição em <b style="color:var(--fg)">${esc(AL(a.k))}</b> · ${TNOME[a.tr]} · <span class="chip f-${a.f}">${FNOME[a.f]}</span>`,
+    `<button class="btn small" id="bSkip" ${canWrite?"":"disabled"}>Decidir depois</button><button class="btn small" data-back="${esc(a.id)}" ${canWrite?"":"disabled"}>Voltar para triagem</button>`)+
+    `<div class="arena">${fighterHtml(card(a.id),"Card em disputa","L")}<div class="vs">×</div>${fighterHtml(card(R[mid]),`Hoje em ${mid+1}º de ${R.length} na faixa ${FNOME[a.f]} de ${esc(AL(a.k))}`,"R")}</div>`;
+}
+function renderBFinal(){
+  const a=canWrite?snapshotChange(ensureAtualFinal):(S.atual&&S.atual.modo==="final"&&S.atual.tr===TRK?S.atual:null);
+  $("#finalTierPick").innerHTML=`<span class="lbl2">Faixa</span>`+FAIXAS.map(f=>`<button class="f-${f}" data-ftier="${f}" aria-pressed="${(a?a.f:selFinalTier)===f}">${FNOME[f]} · ${pendFinal(f)} aguardando</button>`).join("");
+  const pa=areaKeys().reduce((n,k)=>n+pendArea(k),0);
+  $("#finalNote").textContent=pa||S.semFaixa.length?`Ainda há ${pa} cards na Batalha Área e ${S.semFaixa.length} na triagem. Eles entram na final quando forem ordenados na área.`:"";
+  const box=$("#finalArena");
+  if(!a){box.innerHTML=`<div class="empty"><b>Nenhuma batalha final pendente em ${TNOME[TRK]}</b>${FAIXAS.some(f=>FIN()[f].length)?"Todos os cards já ordenados nas áreas estão no ranking geral.":"Termine a Batalha Área de pelo menos uma área para começar."}</div>`;return}
+  const F=FIN()[a.f],mid=Math.floor((a.lo+a.hi)/2),inc=F[mid];
+  const tag=id=>{const p=areaPos(id),l=locate(id);return `<div class="meta"><b style="color:var(--fg)">#${p} em ${esc(AL(l.k))}</b></div>`};
+  box.innerHTML=progressHtml(a,`<b style="color:var(--fg)">${esc(a.id)}</b> buscando posição no ranking de ${TNOME[a.tr]} · <span class="chip f-${a.f}">${FNOME[a.f]}</span>`,"")+
+    `<div class="arena">${fighterHtml(card(a.id),"Card em disputa","L",tag(a.id))}<div class="vs">×</div>${fighterHtml(card(inc),`Hoje em ${mid+1}º de ${F.length} na faixa ${FNOME[a.f]} de ${TNOME[a.tr]}`,"R",tag(inc))}</div>`;
+}
+
+/* ---------- ranking ---------- */
+function geralRows(){
+  const rows=[];let pos=0;const fin=inFinalSet();
+  FAIXAS.forEach(f=>{
+    FIN()[f].forEach((id,i)=>rows.push({id,f,pos:++pos,posF:i+1,sit:"Priorizado"}));
+    areaKeys().forEach(k=>S.area[k][f].filter(i=>!fin.has(i)).forEach(id=>rows.push({id,f,pos:null,sit:"Aguardando batalha final"})));
+    areaKeys().forEach(k=>S.filaArea[k][f].forEach(id=>rows.push({id,f,pos:null,sit:"Aguardando batalha da área"})));
+  });
+  return rows;
+}
+function boardRows(b){
+  const rows=geralRows().filter(r=>BD(card(r.id))===b);let p=0;
+  rows.forEach(r=>{r.posGeral=r.pos;r.pos=r.pos===null?null:++p});
+  return rows;
+}
+function areaRows(k){
+  const rows=[];let pos=0;
+  if(!S.area[k])return rows;
+  FAIXAS.forEach(f=>{S.area[k][f].forEach((id,i)=>rows.push({id,f,pos:++pos,posF:i+1,sit:"Priorizado na área"}));S.filaArea[k][f].forEach(id=>rows.push({id,f,pos:null,sit:"Aguardando batalha da área"}))});
+  return rows;
+}
+function moveIn(list,id,dir,pred){
+  const i=list.indexOf(id);if(i<0)return;
+  let j=i+dir;if(pred)while(j>=0&&j<list.length&&!pred(list[j]))j+=dir;
+  if(j<0||j>=list.length)return;
+  pushUndo();const [x]=list.splice(i,1);list.splice(j,0,x);S.atual=null;commit();
+}
+function setTier(id,nf){
+  if(nf.startsWith("tr-"))return setTrilha(id,nf.slice(3));
+  if(nf==="triagem")return backToTriage(id);
+  if(nf==="inativar")return triar(id,"inativar");
+  pushUndo();removeEverywhere(id);const k=AKEY(card(id));ensureArea(k);S.filaArea[k][nf].unshift(id);S.atual=null;commit();
+  toast(`${id} vai para a Batalha Área de ${AL(k)}, faixa ${FNOME[nf]}.`);
+}
+function rebatFinal(id){pushUndo();TRILHAS.forEach(t=>FAIXAS.forEach(f=>S.fin[t][f]=S.fin[t][f].filter(i=>i!==id)));delete S.finalEm[id];S.atual=null;commit();toast(`${id} volta para a Batalha Final.`)}
+function renderRanking(){
+  const areas=areaKeys(),boards=boardKeys();
+  if(!isGestor&&myArea&&rkMode==="geral"&&!renderRanking._init){renderRanking._init=1;rkMode="area";rkKey=areas.find(k=>AL(k)===myArea)||null}
+  if(rkMode==="area"&&!areas.includes(rkKey))rkKey=areas[0]||null;
+  if(rkMode==="board"&&!boards.includes(rkKey))rkKey=boards[0]||null;
+  if(rkMode!=="geral"&&!rkKey)rkMode="geral";
+  $("#rkMode").innerHTML=`<span class="lbl2">Visão</span>`+[["geral","Geral"],["board","Por board"],["area","Por área"]].map(([m,l])=>`<button data-rk="${m}" aria-pressed="${rkMode===m}">${l}</button>`).join("");
+  const subs=rkMode==="board"?boards:rkMode==="area"?areas:[];
+  $("#rkSub").innerHTML=subs.length?`<span class="lbl2">${rkMode==="board"?"Board":"Área"}</span>`+subs.map(k=>`<button data-rkk="${esc(k)}" aria-pressed="${rkKey===k}">${esc(rkMode==="area"?AL(k):k)}</button>`).join(""):"";
+  $("#rkSub").hidden=!subs.length;
+  const showArea=rkMode!=="area",showBoard=rkMode!=="board",showGeral=rkMode==="board";
+  $("#rkHead").innerHTML=`<tr><th>Pos.</th>${showGeral?"<th>Geral</th>":""}<th>Faixa</th><th>Card</th><th>Título</th>${showBoard?"<th>Board</th>":""}${showArea?"<th>Área</th>":""}<th>Categoria / fase</th><th>Ações</th></tr>`;
+  const cols=6+(showGeral?1:0)+(showBoard?1:0)+(showArea?1:0);
+  const q=norm($("#rkSearch").value);
+  const base=rkMode==="geral"?geralRows():rkMode==="board"?boardRows(rkKey):areaRows(rkKey);
+  const rows=base.filter(r=>!q||norm(r.id+" "+card(r.id).t+" "+card(r.id).sol+" "+card(r.id).cli+" "+AK(card(r.id))+" "+BD(card(r.id))).includes(q));
+  if(!rows.length){$("#rkBody").innerHTML=`<tr><td colspan="${cols}"><div class="empty" style="border:0"><b>${q?"Nada encontrado":"Ranking vazio"}</b>${q?"Tente outro termo.":"Os cards de "+TNOME[TRK]+" aparecem aqui depois da triagem e das batalhas."}</div></td></tr>`;return}
+  const allow=canWrite&&(isGestor||(rkMode==="area"&&myArea&&AL(rkKey)===myArea));
+  let last=null,html="";const dis=allow?"":"disabled";
+  rows.forEach(r=>{
+    if(r.f!==last){last=r.f;const n=rows.filter(x=>x.f===r.f&&x.pos!==null).length;html+=`<tr class="sep"><td colspan="${cols}"><span class="chip f-${r.f}">${FNOME[r.f]}</span> ${n} priorizados</td></tr>`}
+    const c=card(r.id),wait=r.pos===null;
+    let acts="";
+    if(!wait)acts+=`<button data-mv="${esc(r.id)}" data-d="-1" title="Subir" ${dis}>▲</button><button data-mv="${esc(r.id)}" data-d="1" title="Descer" ${dis}>▼</button>`;
+    if(!wait&&rkMode!=="area")acts+=`<button data-rbf="${esc(r.id)}" title="Refazer a batalha final deste card" ${dis}>Rebater</button>`;
+    if(!wait&&rkMode==="area")acts+=`<button data-rba="${esc(r.id)}" data-f="${r.f}" title="Refazer a batalha na área" ${dis}>Rebater</button>`;
+    acts+=`<select data-tier-of="${esc(r.id)}" aria-label="Mover card" ${dis}><option value="">Mover…</option>${FAIXAS.filter(x=>x!==r.f).map(x=>`<option value="${x}">Faixa ${FNOME[x]}</option>`).join("")}<option value="triagem">Voltar à triagem</option>${isGestor?`<option value="tr-${TRK==="sust"?"melh":"sust"}">Mudar para ${TNOME[TRK==="sust"?"melh":"sust"]}</option>`:""}<option value="inativar">Inativar</option></select>`;
+    const ap=areaPos(r.id);
+    html+=`<tr class="${wait?"wait":""}"><td class="pos">${wait?"—":r.pos}</td>${showGeral?`<td class="pos">${r.posGeral??"—"}</td>`:""}<td><span class="chip f-${r.f}">${FNOME[r.f]}${wait||rkMode==="board"?"":" "+r.posF}</span></td>
+    <td><button class="link cid" data-det="${esc(r.id)}">${esc(r.id)}</button></td><td>${esc(c.t)}${wait?` <span class="meta">(${r.sit.toLowerCase()})</span>`:""}</td>
+    ${showBoard?`<td>${esc(BD(c))}</td>`:""}${showArea?`<td>${esc(AK(c))}${ap?` <span class="meta">#${ap}</span>`:""}</td>`:""}
+    <td>${catOf(c)==="iniciado"?'<span class="chip ini">Já iniciado</span><br>':""}<span class="meta">${esc(c.fase||"")}</span></td>
+    <td><div class="acts">${acts}</div></td></tr>`;
+  });
+  $("#rkBody").innerHTML=html;
+}
+function renderInativos(){
+  $("#btnExportIn").disabled=!S.inativos.length;
+  if(!S.inativos.length){$("#inBody").innerHTML=`<tr><td colspan="9"><div class="empty" style="border:0"><b>Nenhum card para inativar</b>Use o botão Inativar na triagem para montar a lista.</div></td></tr>`;return}
+  $("#inBody").innerHTML=S.inativos.map(x=>{const c=card(x.id);return `<tr><td><button class="link cid" data-det="${esc(x.id)}">${esc(x.id)}</button></td><td>${esc(c.t)}</td><td>${esc(TNOME[TR(c)]||"—")}</td><td>${esc(BD(c))}</td><td>${esc(AK(c))}</td><td>${esc(c.sol||"—")}</td>
+    <td>${catOf(c)==="iniciado"?'<span class="chip ini">Já iniciado</span><br>':""}<span class="meta">${esc(c.fase||"")}</span></td><td>${fmtDate(x.em)}</td>
+    <td><div class="acts"><button data-reat="${esc(x.id)}" ${canWrite&&(isGestor||(myArea&&AK(c)===myArea))?"":"disabled"}>Reativar</button></div></td></tr>`}).join("");
+}
+
+/* ---------- acompanhamento ---------- */
+function areaLink(a){return PAGE_URL+"#area-"+slug(a)}
+function renderAreas(){
+  const names=new Set();Object.values(cards).forEach(c=>{if(!c.concl&&AK(c)!==SEM_AREA)names.add(AK(c))});
+  Object.keys(S.area).forEach(k=>names.add(AL(k)));
+  const rows=[...names].sort(sortPt).map(a=>{
+    const ks=Object.keys(Object.assign({},S.area,S.filaArea)).filter(k=>AL(k)===a);
+    const tri=S.semFaixa.filter(id=>AK(card(id))===a);
+    const dev=tri.filter(id=>S.devolvidos[id]).length;
+    const fila=ks.reduce((n,k)=>n+pendArea(k),0),ord=ks.reduce((n,k)=>n+FAIXAS.reduce((m,f)=>m+(S.area[k]?S.area[k][f].length:0),0),0);
+    const ina=S.inativos.filter(x=>AK(card(x.id))===a).length;
+    let ult=null;ks.forEach(k=>{const d=remoteMeta[areaPath(k)];if(d&&(!ult||d>ult))ult=d});
+    return {a,total:tri.length+fila+ord+ina,tri:tri.length-dev,dev,fila,ord,ina,ult};
+  });
+  const semA=S.semFaixa.filter(id=>AK(card(id))===SEM_AREA).length,semT=S.semFaixa.filter(id=>!TR(card(id))).length,devT=Object.keys(S.devolvidos||{}).length;
+  const prontas=rows.filter(r=>!r.tri&&!r.fila&&r.total).length;
+  $("#acStats").innerHTML=[["Áreas",rows.length],["Áreas concluídas",prontas],["Cards sem área",semA],["Sem trilha",semT],["Devolvidos",devT]].map(([l,n])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join("");
+  $("#acBody").innerHTML=rows.length?rows.map(r=>`<tr><td><b>${esc(r.a)}</b></td><td>${r.total}</td><td>${r.tri?`<span class="chip bad">${r.tri}</span>`:'<span class="chip ok">0</span>'}</td><td>${r.dev||"—"}</td><td>${r.fila?`<span class="chip na">${r.fila}</span>`:'<span class="chip ok">0</span>'}</td><td>${r.ord}</td><td>${r.ina}</td><td>${r.ult?fmtDate(r.ult):"—"}</td>
+    <td><button class="btn small" data-copy="${esc(areaLink(r.a))}">Copiar link</button></td></tr>`).join(""):`<tr><td colspan="9"><div class="empty" style="border:0"><b>Nenhuma área definida ainda</b>Defina a área dos cards na triagem.</div></td></tr>`;
+  $("#acNote").textContent=semA||semT?`Antes de enviar os links, defina área e trilha dos ${semA} cards sem área e ${semT} sem trilha (filtros na Triagem). Esses cards não aparecem para nenhuma área.`:"";
+}
+function renderMyAreaBar(){
+  const bar=$("#myAreaBar");const names=allAreaNames();
+  bar.hidden=!names.length;
+  bar.innerHTML=`<label class="lbl2" for="selMyArea">${isGestor?"Ver como área":"Sua área"}</label><select id="selMyArea" style="border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 8px">${isGestor?`<option value="">Todas (gestor)</option>`:`<option value="">Escolha sua área…</option>`}${names.map(a=>`<option${a===myArea?" selected":""}>${esc(a)}</option>`).join("")}</select>`;
+  const b=$("#areaBanner");
+  if(!isGestor&&db&&canWrite){b.hidden=false;b.innerHTML=myArea?`Você está trabalhando na área <b>${esc(myArea)}</b>: faça a triagem e a Batalha Área dos seus cards. Importação, área e trilha dos cards e Batalha Final ficam com o gestor.`:`<b>Escolha sua área</b> no topo da página para ver os seus cards.`}
+  else b.hidden=true;
+}
+
+/* ---------- concluídos ---------- */
+function concluidosRows(){
+  const rows=Object.values(AV).map(r=>({...r}));
+  const seen=new Set(rows.map(r=>r.id));
+  Object.values(cards).filter(c=>c.concl&&!seen.has(c.id)).forEach(c=>rows.push({id:c.id,t:c.t,bd:c.bd,ar:c.ar,tr:TR(c),dtc:c.dtc,dtcFonte:c.dtcFonte,aval:"sem"}));
+  rows.sort((a,b)=>String(b.dtc||"").localeCompare(String(a.dtc||"")));
+  return rows;
+}
+const furObj=x=>Array.isArray(x)?{id:x[0],pos:x[1],bd:x[2]}:x;
+const AVNOME={ok:"Seguiu a fila",furou:"Furou a fila",fora:"Fora do ranking geral",sem:"Sem avaliação"};
+function avalHtml(r){
+  if(r.aval==="ok")return `<span class="chip ok">Seguiu a fila</span>`;
+  if(r.aval==="furou")return `<span class="chip bad">Furou a fila · ${r.nFurados} acima ainda abertos</span>${r.nFuradosBoard!==undefined?`<div class="furados">${r.nFuradosBoard} do mesmo board</div>`:""}<div class="furados">Passou na frente de: ${(r.furados||[]).map(furObj).map(({id:y,pos:p,bd:b})=>`<button class="link" data-det="${esc(y)}">${esc(y)}</button> (${p}º, ${esc(b)})`).join(", ")}${r.nFurados>(r.furados||[]).length?"…":""}</div>`;
+  if(r.aval==="fora")return `<span class="chip na">Fora do ranking geral</span><div class="furados">${esc(r.onde||"")}</div>`;
+  return `<span class="chip na">Sem avaliação</span><div class="furados">Concluído antes de entrar na priorização</div>`;
+}
+function renderConcluidos(){
+  const all=concluidosRows();
+  fillSelect($("#coBoard"),all.map(r=>r.bd),"Todos os boards");
+  const ft=$("#coTrk").value,fb=$("#coBoard").value,fa=$("#coAval").value,q=norm($("#coSearch").value);
+  const rows=all.filter(r=>(!ft||(r.tr||"melh")===ft)&&(!fb||r.bd===fb)&&(!fa||r.aval===fa)&&(!q||norm(r.id+" "+r.t).includes(q)));
+  const ev=all.filter(r=>(!ft||(r.tr||"melh")===ft)&&(!fb||r.bd===fb)&&(r.aval==="ok"||r.aval==="furou"));
+  const ok=ev.filter(r=>r.aval==="ok").length;
+  $("#coStats").innerHTML=[["Avaliados",ev.length],["Seguiram a fila",ok],["Furaram a fila",ev.length-ok],["Aderência",ev.length?Math.round(ok*100/ev.length)+"%":"—"]].map(([l,n])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join("");
+  $("#btnExportCo").disabled=!all.length;
+  if(!rows.length){$("#coBody").innerHTML=`<tr><td colspan="8"><div class="empty" style="border:0"><b>${all.length?"Nada com esse filtro":"Nenhum card concluído ainda"}</b>${all.length?"Limpe os filtros.":"Os concluídos aparecem aqui quando vierem nas bases importadas."}</div></td></tr>`;return}
+  $("#coBody").innerHTML=rows.map(r=>`<tr><td><button class="link cid" data-det="${esc(r.id)}">${esc(r.id)}</button></td><td>${esc(r.t)}</td><td>${esc(TNOME[r.tr]||"—")}</td><td>${esc(r.bd||"—")}</td><td>${esc(r.ar||SEM_AREA)}</td>
+    <td>${fmtDate(r.dtc,true)||"—"}${r.dtcFonte==="importacao"?' <span class="meta">(data da importação)</span>':""}</td>
+    <td>${r.posGeral?`${r.posGeral}º de ${r.totalGeral} em ${esc(TNOME[r.tr]||"")}${r.posBoard?`<div class="furados">${r.posBoard}º no board</div>`:""}${r.fotoData?`<div class="furados">foto de ${dayBr(r.fotoData)}</div>`:""}`:"—"}</td><td>${avalHtml(r)}</td></tr>`).join("");
+}
+
+/* ---------- exportação ---------- */
+function rowOut(r,geral){const c=card(r.id);return {"Trilha":TNOME[TR(c)]||"","Posição geral":geral?(r.pos??""):(r.posGeral??""),"Faixa":FNOME[r.f]||"","Posição na faixa":geral?(r.posF??""):"","Board":BD(c),"Posição no board":boardPos(r.id)??"","Área":AK(c),"Posição na área":areaPos(r.id)??"","Situação":r.sit,"Card":r.id,"Título":c.t,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Cliente(s)":c.cli,"Tipo de demanda":c.tipo,"Nível de impacto":c.imp,"Solicitante":c.sol,"Área do solicitante":c.area,"Criado em":c.criado}}
+function inativosOut(){return S.inativos.map(x=>{const c=card(x.id);return {"Card":x.id,"Título":c.t,"Trilha":TNOME[TR(c)]||"","Board":BD(c),"Área":AK(c),"Solicitante":c.sol,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Marcado para inativar em":fmtDate(x.em)}})}
+function concluidosOut(){return concluidosRows().map(r=>({"Card":r.id,"Título":r.t,"Trilha":TNOME[r.tr]||"","Board":r.bd,"Área":r.ar||SEM_AREA,"Concluído em":fmtDate(r.dtc,true),"Fonte da data":r.dtcFonte==="importacao"?"Data da importação":"Log do board","Posição geral quando concluído":r.posGeral??"","Total no ranking":r.totalGeral??"","Posição no board":r.posBoard??"","Foto do ranking usada":r.fotoData?dayBr(r.fotoData):"","Avaliação":AVNOME[r.aval],"Cards acima ainda abertos":r.nFurados??"","Do mesmo board":r.nFuradosBoard??"","Passou na frente de":(r.furados||[]).map(furObj).map(({id:y,pos:p})=>`${y} (${p}º)`).join(", "),"Observação":r.onde||""}))}
+const sheetName=(p,k)=>(p+k).replace(/[\\\/\?\*\[\]:]/g," ").slice(0,31);
+async function exportXlsx(kind){
+  const dl=await claude.use("downloads");
+  if(!dl){toast("Este visualizador não permite baixar arquivos.");return}
+  const wb=XLSX.utils.book_new(),used=new Set();
+  const add=(rows,name,w)=>{let n=name,i=2;while(used.has(n))n=name.slice(0,28)+" "+i++;used.add(n);const ws=XLSX.utils.json_to_sheet(rows.length?rows:[{"":"Sem registros"}]);ws["!cols"]=w.map(x=>({wch:x}));XLSX.utils.book_append_sheet(wb,ws,n)};
+  const W=[12,8,8,8,18,8,24,8,24,9,60,12,26,24,18,30,22,26,11];
+  if(kind==="tudo"){
+    const keepT=TRK;
+    for(const t of TRILHAS){TRK=t;const p=t==="sust"?"Sust ":"Melh ";
+      add(geralRows().map(r=>rowOut(r,true)),"Ranking "+TNOME[t],W);
+      boardKeys().forEach(b=>add(boardRows(b).map(r=>rowOut(r,false)),sheetName(p+"Board ",b),W));
+      areaKeys().forEach(k=>add(areaRows(k).map(r=>rowOut(r,false)),sheetName(p+"Área ",AL(k)),W));
+    }
+    TRK=keepT;
+  }
+  if(kind==="tudo"||kind==="inativos")add(inativosOut(),"Inativos",[9,60,12,18,24,22,12,26,20]);
+  if(kind==="tudo"||kind==="concluidos")add(concluidosOut(),"Concluídos",[9,60,12,18,24,12,16,12,10,10,14,22,12,10,50,26]);
+  const buf=XLSX.write(wb,{type:"array",bookType:"xlsx"});
+  const d=new Date().toISOString().slice(0,10);
+  const fn={tudo:`priorizacao-cards-${d}.xlsx`,inativos:`cards-para-inativar-${d}.xlsx`,concluidos:`cards-concluidos-${d}.xlsx`}[kind];
+  try{await dl.save({filename:fn,data:new Uint8Array(buf)});toast("Arquivo exportado.")}
+  catch(e){if(e&&e.code!=="declined")toast("Não consegui gerar o download agora.")}
+}
+
+/* ---------- detalhe ---------- */
+function openDetail(id){
+  const c=cards[id]||AV[id]||card(id),l=locate(id);
+  $("#dId").textContent=c.id||id;$("#dTitle").textContent=c.t;$("#dChips").innerHTML=chipsHtml(c,{tier:l.f});
+  const sec=(lb,v)=>v?`<div class="lbl">${lb}</div><p>${esc(v)}</p>`:"";
+  const ap=areaPos(id),bp=boardPos(id);
+  $("#dBody").innerHTML=(sec("Trilha",TNOME[TR(c)]||"A definir")+sec("Sistema",c.sis||"")+sec("Board",BD(c)+(bp?` · ${bp}º no board`:""))+sec("Área",AK(c)+(ap?` · #${ap} na área`:""))+sec("Solicitante",[c.sol,c.area].filter(Boolean).join(" · "))+sec("Fase atual",c.fase)+sec("Concluído em",c.dtc?fmtDate(c.dtc,true):"")+sec("Criado em",c.criado)+sec("Menu",c.menu)+sec("Nível de impacto",c.imp)+sec("Problema identificado",c.prob)+sec("Ajuste necessário",c.aj))||"<p>Sem descrição na base.</p>";
+  $("#dlg").showModal();
+}
+
+/* ---------- render geral ---------- */
+function go(v){view=v;render();window.scrollTo(0,0)}
+const GESTOR_VIEWS=["importar","bfinal","areas"];
+function render(){
+  if(!isGestor&&GESTOR_VIEWS.includes(view))view="triagem";
+  document.querySelectorAll("nav.tabs button").forEach(b=>{b.setAttribute("aria-selected",b.dataset.v===view);b.hidden=!isGestor&&GESTOR_VIEWS.includes(b.dataset.v)});
+  ["importar","triagem","barea","bfinal","ranking","inativos","concluidos","areas"].forEach(v=>$("#v-"+v).hidden=v!==view);
+  renderMyAreaBar();
+  const keys=areaKeys();
+  const useTrk=["barea","bfinal","ranking"].includes(view);
+  $("#trkBar").hidden=!useTrk;
+  if(useTrk)$("#trkBar").innerHTML=`<span class="lbl2">Trilha</span>`+TRILHAS.map(t=>{const n=areaKeys(t).reduce((a,k)=>a+pendArea(k),0);return `<button data-trk="${t}" aria-pressed="${TRK===t}">${TNOME[t]} · ${FAIXAS.reduce((a,f)=>a+S.fin[t][f].length,0)} no ranking${n?` · ${n} na área`:""}</button>`}).join("");
+  $("#c-triagem").textContent=S.semFaixa.filter(id=>{const c=card(id);return isGestor?inMyArea(c):inMyArea(c)&&TR(c)&&AK(c)!==SEM_AREA&&!S.devolvidos[id]}).length;
+  $("#c-barea").textContent=keys.filter(k=>!myArea||AL(k)===myArea).reduce((n,k)=>n+pendArea(k),0);
+  $("#c-bfinal").textContent=FAIXAS.reduce((n,f)=>n+pendFinal(f),0);
+  $("#c-ranking").textContent=FAIXAS.reduce((n,f)=>n+FIN()[f].length,0);
+  $("#c-inativos").textContent=S.inativos.length;
+  $("#c-concluidos").textContent=Object.values(AV).filter(r=>r.aval==="ok"||r.aval==="furou").length;
+  const imp=S.importacoes||{},bs=Object.keys(imp);
+  const u=S.ultimaImportacao;
+  $("#metaLine").textContent=bs.length?bs.map(b=>`${b}: ${fmtDate(imp[b].em,true)}`).join(" · "):u?`Base: ${u.arquivo} · ${fmtDate(u.em)}`:"Nenhuma base importada ainda";
+  $("#impLast").innerHTML=bs.length?"<b>Última importação por board</b><br>"+bs.map(b=>`${esc(b)}: ${esc(imp[b].arquivo)} · ${fmtDate(imp[b].em)}`).join("<br>"):"";
+  $("#btnReset").hidden=!isGestor;$("#btnReset").disabled=!canWrite;
+  if(view==="triagem")renderTriagem();
+  if(view==="barea")renderBArea();
+  if(view==="bfinal")renderBFinal();
+  if(view==="ranking")renderRanking();
+  if(view==="inativos")renderInativos();
+  if(view==="concluidos")renderConcluidos();
+  if(view==="areas")renderAreas();
+}
+
+/* ---------- eventos ---------- */
+document.querySelector("nav.tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-v]");if(b)go(b.dataset.v)});
+const drop=$("#drop");
+["dragover","dragenter"].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add("over")}));
+["dragleave","drop"].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove("over")}));
+drop.addEventListener("drop",e=>{if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files)});
+$("#fileIn").addEventListener("change",e=>{if(e.target.files.length)addFiles(e.target.files);e.target.value=""});
+$("#btnCompare").addEventListener("click",compareFiles);
+$("#btnClearFiles").addEventListener("click",()=>{pendingFiles=[];pendingImport=null;$("#impPreview").hidden=true;renderFiles()});
+$("#impApply").addEventListener("click",applyImport);
+$("#impCancel").addEventListener("click",()=>{pendingImport=null;$("#impPreview").hidden=true});
+["#triSearch","#triTrk","#triBoard","#triArea","#triCli","#triCat"].forEach(s=>$(s).addEventListener("input",renderTriagem));
+["#coTrk","#coBoard","#coAval","#coSearch"].forEach(s=>$(s).addEventListener("input",renderConcluidos));
+$("#triUndo").addEventListener("click",undo);
+$("#rkSearch").addEventListener("input",renderRanking);
+$("#btnExport").addEventListener("click",()=>exportXlsx("tudo"));
+$("#btnExportIn").addEventListener("click",()=>exportXlsx("inativos"));
+$("#btnExportCo").addEventListener("click",()=>exportXlsx("concluidos"));
+$("#btnReset").addEventListener("click",()=>{if(!canWrite)return;$("#resetBox").innerHTML=`<div class="confirm"><b>O que você quer zerar?</b><div class="meta" style="margin-top:4px">As bases importadas, os inativos e as avaliações de concluídos continuam.</div><div class="row" style="margin-top:10px"><button class="btn" id="rsFinal">Só a batalha final de ${TNOME[TRK]}</button><button class="btn primary" id="rsAll">Tudo (volta tudo para a triagem)</button><button class="btn" id="rsNo">Cancelar</button></div></div>`});
+$("#resetBox").addEventListener("click",e=>{
+  if(e.target.id==="rsNo")$("#resetBox").innerHTML="";
+  if(e.target.id==="rsFinal"){pushUndo();S.fin[TRK]={alta:[],media:[],baixa:[]};S.atual=null;$("#resetBox").innerHTML="";commit();toast(`Batalha final de ${TNOME[TRK]} zerada.`)}
+  if(e.target.id==="rsAll"){pushUndo();const inIds=new Set(S.inativos.map(x=>x.id));const ids=[...allPlaced()].filter(i=>cards[i]&&!inIds.has(i));const keep={inativos:S.inativos,ultimaImportacao:S.ultimaImportacao,importacoes:S.importacoes,trilhaManual:S.trilhaManual,areaManual:S.areaManual};S=emptyState();S.semFaixa=ids;Object.assign(S,keep);$("#resetBox").innerHTML="";commit();toast("Priorização zerada.")}
+});
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-copy],[data-keep],[data-devolver],[data-trk],[data-str],[data-det],[data-tri],[data-win],[data-area],[data-atier],[data-ftier],[data-rk],[data-rkk],[data-mv],[data-rbf],[data-rba],[data-back],[data-reat],[data-frm],#bUndo,#bSkip,#dClose");if(!t)return;
+  if(t.id==="dClose")return $("#dlg").close();
+  if(t.dataset.copy){const v=t.dataset.copy;navigator.clipboard.writeText(v).then(()=>toast("Link copiado. Envie para a pessoa da área."),()=>{window.prompt?toast(v):0;toast("Não consegui copiar. Link: "+v)});return}
+  if(t.dataset.keep)return manterArea(t.dataset.keep);
+  if(t.dataset.devolver)return devolver(t.dataset.devolver);
+  if(t.dataset.trk){TRK=t.dataset.trk;try{localStorage.setItem("trk",TRK)}catch(e){}selArea=null;selAreaTier=null;selFinalTier=null;rkKey=null;return render()}
+  if(t.dataset.str)return setTrilha(t.dataset.str,t.dataset.t);
+  if(t.dataset.det)return openDetail(t.dataset.det);
+  if(t.dataset.frm!==undefined){pendingFiles.splice(+t.dataset.frm,1);pendingImport=null;$("#impPreview").hidden=true;return renderFiles()}
+  if(t.dataset.tri)return triar(t.dataset.tri,t.dataset.f);
+  if(t.dataset.win)return decide(t.dataset.win==="L");
+  if(t.dataset.area!==undefined){if(!pendArea(t.dataset.area))return toast(`Nenhum card aguardando batalha em ${AL(t.dataset.area)}.`);selArea=t.dataset.area;selAreaTier=null;if(S.atual&&S.atual.modo==="area"&&S.atual.k!==selArea)S.atual=null;return commit()}
+  if(t.dataset.atier){const k=S.atual&&S.atual.modo==="area"&&S.atual.tr===TRK?S.atual.k:selArea;if(!k||!S.filaArea[k][t.dataset.atier].length)return toast("Nenhum card na fila dessa faixa.");selArea=k;selAreaTier=t.dataset.atier;if(S.atual&&S.atual.f!==selAreaTier)S.atual=null;return commit()}
+  if(t.dataset.ftier){if(!pendFinal(t.dataset.ftier))return toast(`Nenhum card aguardando na faixa ${FNOME[t.dataset.ftier]}.`);selFinalTier=t.dataset.ftier;if(S.atual&&S.atual.modo==="final"&&S.atual.tr===TRK&&S.atual.f!==selFinalTier)S.atual=null;return commit()}
+  if(t.dataset.rk){rkMode=t.dataset.rk;rkKey=null;return renderRanking()}
+  if(t.dataset.rkk!==undefined){rkKey=t.dataset.rkk;return renderRanking()}
+  if(t.dataset.mv){const id=t.dataset.mv,d=+t.dataset.d;
+    if(rkMode==="area"){const l=locate(id);return moveIn(S.area[l.k][l.f],id,d)}
+    const f=FAIXAS.find(x=>FIN()[x].includes(id));if(!f)return;
+    const b=BD(card(id));return moveIn(FIN()[f],id,d,rkMode==="board"?(y=>BD(card(y))===b):null)}
+  if(t.dataset.rbf)return rebatFinal(t.dataset.rbf);
+  if(t.dataset.rba)return setTier(t.dataset.rba,t.dataset.f);
+  if(t.dataset.back)return backToTriage(t.dataset.back);
+  if(t.dataset.reat){pushUndo();removeEverywhere(t.dataset.reat);S.semFaixa.unshift(t.dataset.reat);commit();return toast(`${t.dataset.reat} voltou para a triagem.`)}
+  if(t.id==="bUndo")return undoStep();if(t.id==="bSkip")return skipArea();
+});
+document.addEventListener("change",e=>{
+  const s=e.target.closest("select[data-tier-of]");if(s&&s.value)return setTier(s.dataset.tierOf,s.value);
+  const ia=e.target.closest("input[data-sar]");if(ia)return setArea(ia.dataset.sar,ia.value);
+  if(e.target.id==="selMyArea"){myArea=e.target.value||null;try{myArea?localStorage.setItem("myArea",myArea):localStorage.removeItem("myArea")}catch(x){}selArea=null;selAreaTier=null;rkKey=null;renderRanking._init=0;S.atual=S.atual&&S.atual.modo==="final"?S.atual:null;return render()}
+  const fb=e.target.closest("select[data-fbd]");if(fb){pendingFiles[+fb.dataset.fbd].bd=fb.value;pendingImport=null;$("#impPreview").hidden=true}
+});
+$("#dlg").addEventListener("click",e=>{if(e.target===$("#dlg"))$("#dlg").close()});
+document.addEventListener("keydown",e=>{
+  if((view!=="barea"&&view!=="bfinal")||$("#dlg").open||/input|select|textarea/i.test(e.target.tagName))return;
+  if(e.key==="ArrowLeft"){e.preventDefault();decide(true)}else if(e.key==="ArrowRight"){e.preventDefault();decide(false)}else if(e.key.toLowerCase()==="u")undoStep();
+});
+
+/* ---------- tela cheia ---------- */
+(()=>{const btn=$("#btnFull"),de=document.documentElement;
+  if(!(de.requestFullscreen||de.webkitRequestFullscreen))return;
+  btn.hidden=false;
+  const isFull=()=>!!(document.fullscreenElement||document.webkitFullscreenElement);
+  const sync=()=>{btn.textContent=isFull()?"Sair da tela cheia":"Tela cheia"};
+  btn.addEventListener("click",async()=>{try{
+    if(isFull())await (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+    else await (de.requestFullscreen||de.webkitRequestFullscreen).call(de);
+  }catch(e){toast("A tela cheia não está disponível aqui. Use F11 no navegador.")}sync()});
+  document.addEventListener("fullscreenchange",sync);document.addEventListener("webkitfullscreenchange",sync);
+})();
+
+/* ---------- início ---------- */
+const remoteMeta={};
+const BOOTSTRAP=["gente.seguranca.claude@demarco.com.br"];
+const DOMINIO="@demarco.com.br";
+firebase.initializeApp({apiKey:"AIzaSyC8Je0qKt7riNY8NTip_jvAFN00tlmbjcU",authDomain:"priorizacao-cards.firebaseapp.com",projectId:"priorizacao-cards",storageBucket:"priorizacao-cards.firebasestorage.app",messagingSenderId:"258615516001",appId:"1:258615516001:web:7e7830c027f7d9c9e10320"});
+const auth=firebase.auth();
+window.claude={use:async n=>n==="downloads"?{save:async({filename,data})=>{const blob=data instanceof Blob?data:new Blob([data]);const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);return {status:"saved"}}}:null};
+let gestores=[];
+const h0=(location.hash||"").replace(/^#/,"");
+try{if(h0.startsWith("area-"))localStorage.setItem("pendHash",h0)}catch(e){}
+function showLogin(msg){$("#loginWrap").hidden=false;$("#mainWrap").hidden=true;document.querySelector("nav.tabs").hidden=true;$("#myAreaBar").hidden=true;$("#trkBar").hidden=true;if(msg)$("#loginMsg").textContent=msg;$("#metaLine").textContent="";}
+function hideLogin(){$("#loginWrap").hidden=true;$("#mainWrap").hidden=false;document.querySelector("nav.tabs").hidden=false}
+$("#btnLogin").addEventListener("click",async()=>{
+  const email=$("#loginEmail").value.trim().toLowerCase();$("#loginErr").hidden=true;
+  if(!/^\S+@\S+\.\S+$/.test(email)){$("#loginErr").textContent="Digite um e-mail válido.";$("#loginErr").hidden=false;return}
+  if(confirmingLink){try{await auth.signInWithEmailLink(email,location.href);history.replaceState(null,"",location.pathname)}catch(e){$("#loginErr").textContent="Esse link expirou ou já foi usado. Peça um novo.";$("#loginErr").hidden=false;confirmingLink=false;$("#btnLogin").textContent="Enviar link de acesso"}return}
+  $("#btnLogin").disabled=true;
+  try{await auth.sendSignInLinkToEmail(email,{url:location.origin+location.pathname,handleCodeInApp:true});try{localStorage.setItem("emailLogin",email)}catch(e){}
+    $("#loginMsg").innerHTML=`Enviamos um link para <b>${esc(email)}</b>. Abra o e-mail <b>neste mesmo navegador</b> e clique no link para entrar. Se não chegar em alguns minutos, olhe o spam.`}
+  catch(e){$("#loginErr").textContent="Não consegui enviar o link. Confira o e-mail e tente de novo.";$("#loginErr").hidden=false}
+  finally{$("#btnLogin").disabled=false}
+});
+$("#loginEmail").addEventListener("keydown",e=>{if(e.key==="Enter")$("#btnLogin").click()});
+$("#btnSair").addEventListener("click",()=>auth.signOut().then(()=>location.reload()));
+let confirmingLink=false;
+if(auth.isSignInWithEmailLink(location.href)){
+  let em=null;try{em=localStorage.getItem("emailLogin")}catch(e){}
+  if(em){auth.signInWithEmailLink(em,location.href).then(()=>history.replaceState(null,"",location.pathname)).catch(()=>showLogin("Esse link expirou ou já foi usado. Peça um novo."))}
+  else{confirmingLink=true;showLogin("Confirme o e-mail em que você recebeu o link.");$("#btnLogin").textContent="Entrar"}
+}
+let started=false;
+auth.onAuthStateChanged(u=>{if(!u){if(!confirmingLink)showLogin();return}hideLogin();if(!started){started=true;start(u)}});
+async function start(u){
+  const email=(u.email||"").toLowerCase();
+  $("#userBox").textContent=email;$("#btnSair").hidden=false;
+  db=firebase.firestore();
+  try{const pend=localStorage.getItem("pendHash");if(pend){localStorage.removeItem("pendHash");history.replaceState(null,"",location.pathname+"#"+pend)}}catch(e){}
+  const h=(location.hash||"").replace(/^#/,"");
+  let acc=null;
+  try{const s=await db.doc("config/acesso").get();acc=s.exists?s.data():null}catch(e){acc=undefined}
+  if(acc===null&&BOOTSTRAP.includes(email)){acc={gestores:[email]};try{await db.doc("config/acesso").set(acc)}catch(e){}}
+  gestores=((acc&&acc.gestores)||[]).map(x=>String(x).toLowerCase());
+  isGestor=gestores.includes(email);
+  if(acc===undefined||(!isGestor&&!email.endsWith(DOMINIO))){db=null;canWrite=false;$("#noDb").hidden=false;$("#metaLine").textContent="";render();return}
+  canWrite=true;
+  $("#gestoresTxt").value=gestores.join("\n");
+  db.doc("config/acesso").onSnapshot(s=>{if(!s.exists)return;gestores=(s.data().gestores||[]).map(x=>String(x).toLowerCase());const g=gestores.includes(email);if(g!==isGestor){isGestor=g;render()}if(document.activeElement!==$("#gestoresTxt"))$("#gestoresTxt").value=gestores.join("\n")},()=>{});
+  db.doc("base/meta").onSnapshot(s=>loadCards(s.exists?s.data():null).then(()=>{
+    if(h.startsWith("area-")&&!applyHash._done){const a=allAreaNames().find(x=>"area-"+slug(x)===h);if(a){applyHash._done=1;myArea=a;try{localStorage.setItem("myArea",a)}catch(e){}render()}}
+  }),()=>{});
+  db.doc("state/avaliacoes").onSnapshot(s=>{AV=s.exists?JSON.parse(JSON.stringify(s.data().itens||{})):{};render()},()=>{});
+  db.doc("state/main").onSnapshot(s=>{
+    const d=s.exists?JSON.parse(JSON.stringify(s.data())):null;
+    if(d){remoteMeta["state/main"]=d.atualizadoEm;delete d.atualizadoEm;remote["state/main"]=d}else delete remote["state/main"];
+    rebuild();
+    if(view==="importar"&&S.ultimaImportacao&&!pendingImport&&!pendingFiles.length&&!render._moved){render._moved=true;
+      const pa=areaKeys().some(k=>pendArea(k)),pf=FAIXAS.some(f=>pendFinal(f));
+      view=S.semFaixa.length?"triagem":pa?"barea":pf?"bfinal":"ranking"}
+    render();
+  },e=>{$("#noDb").hidden=false});
+  db.collection("areas").onSnapshot(q=>{
+    const seen=new Set();
+    q.docs.forEach(doc=>{const p="areas/"+doc.id;seen.add(p);const d=JSON.parse(JSON.stringify(doc.data()));remoteMeta[p]=d.atualizadoEm;delete d.atualizadoEm;remote[p]=d});
+    Object.keys(remote).forEach(p=>{if(p.startsWith("areas/")&&!seen.has(p))delete remote[p]});
+    rebuild();render();
+  },()=>{});
+}
+function applyHash(){}
+$("#btnGestores").addEventListener("click",async()=>{
+  if(!isGestor)return;const list=[...new Set($("#gestoresTxt").value.split(/[\s,;]+/).map(x=>x.trim().toLowerCase()).filter(x=>/^\S+@\S+\.\S+$/.test(x)))];
+  const me=(auth.currentUser.email||"").toLowerCase();if(!list.includes(me))list.push(me);
+  try{await db.doc("config/acesso").set({gestores:list});toast("Gestores salvos.")}catch(e){toast("Não consegui salvar os gestores.")}
+});
+function fsClean(v){return JSON.parse(JSON.stringify(v,(k,x)=>Array.isArray(x)?x.map(y=>Array.isArray(y)?Object.assign({},y):y):x))}
+let restoreData=null;
+$("#restoreIn").addEventListener("change",async e=>{
+  const f=e.target.files[0];e.target.value="";if(!f)return;
+  try{const j=JSON.parse(await f.text());if(!j||!j.docs)throw 0;restoreData=j.docs;
+    const n=Object.keys(restoreData).length;
+    $("#restoreBox").innerHTML=`<div class="confirm"><b>Restaurar ${n} documentos?</b> Isso substitui as bases, a priorização e os inativos atuais.<div class="row" style="margin-top:10px"><button class="btn primary" id="rsGo">Restaurar</button><button class="btn" id="rsCancel">Cancelar</button></div></div>`}
+  catch(x){toast("Esse arquivo não é um backup válido.")}
+});
+$("#restoreBox").addEventListener("click",async e=>{
+  if(e.target.id==="rsCancel"){restoreData=null;$("#restoreBox").innerHTML="";return}
+  if(e.target.id!=="rsGo"||!restoreData||!isGestor)return;
+  e.target.disabled=true;e.target.textContent="Restaurando…";
+  try{
+    const old=await db.collection("areas").get();for(const d of old.docs)if(!restoreData["areas/"+d.id])await d.ref.delete();
+    for(const [p,d] of Object.entries(restoreData))await db.doc(p).set(fsClean(d));
+    restoreData=null;$("#restoreBox").innerHTML="";toast("Backup restaurado.");setTimeout(()=>location.reload(),800);
+  }catch(x){toast("A restauração parou no meio. Tente de novo.");e.target.disabled=false;e.target.textContent="Restaurar"}
+});
+$("#btnBackup").addEventListener("click",async()=>{
+  if(!db)return;const docs={};
+  for(const c of ["base","state","areas","fotos","config"]){const q=await db.collection(c).get();q.docs.forEach(d=>docs[c+"/"+d.id]=d.data())}
+  const dl=await claude.use("downloads");await dl.save({filename:`backup-priorizacao-${new Date().toISOString().slice(0,10)}.json`,data:new Blob([JSON.stringify({exportadoEm:new Date().toISOString(),docs})],{type:"application/json"})});
+});
+</script>
+
+</body>
+</html>
