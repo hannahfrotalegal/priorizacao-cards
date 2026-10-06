@@ -141,7 +141,7 @@ dialog::backdrop{background:rgba(10,16,22,.55)}
 .chip.ok{background:var(--baixa-soft);color:var(--baixa)} .chip.bad{background:var(--alta-soft);color:var(--alta)} .chip.na{background:var(--surface-2);color:var(--muted)}
 .chip.bd{background:var(--accent);color:var(--accent-ink)}
 .furados{font-size:13px;color:var(--muted);margin-top:2px}
-body{margin:0;font-family:var(--f-body)}[hidden]{display:none!important}
+body{margin:0;font-family:var(--f-body)}label.drop{display:block}[hidden]{display:none!important}
 .login{max-width:440px;margin:12vh auto 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px 24px;display:flex;flex-direction:column;gap:12px}
 .login h2{margin:0}.login input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px 12px;font-size:16px}
 </style>
@@ -176,9 +176,9 @@ body{margin:0;font-family:var(--f-body)}[hidden]{display:none!important}
 <div class="wrap" id="loginWrap" hidden>
   <div class="login">
     <h2>Entrar</h2>
-    <p class="meta" id="loginMsg" style="margin:0">Digite seu e-mail da Demarco. Você vai receber um link de acesso, sem senha.</p>
+    <p class="meta" id="loginMsg" style="margin:0">Digite seu e-mail. Você vai receber um link de acesso, sem senha.</p>
     <label class="meta" for="loginEmail">E-mail</label>
-    <input id="loginEmail" type="email" autocomplete="email" placeholder="nome@demarco.com.br">
+    <input id="loginEmail" type="email" autocomplete="email" placeholder="seu e-mail">
     <button class="btn primary" id="btnLogin">Enviar link de acesso</button>
     <div class="err" id="loginErr" hidden></div>
   </div>
@@ -186,7 +186,7 @@ body{margin:0;font-family:var(--f-body)}[hidden]{display:none!important}
 <main class="wrap" id="mainWrap">
   <div class="banner" id="areaBanner" hidden></div>
   <div class="banner" id="roBanner" hidden>Você está vendo a priorização em modo leitura. Só quem tem acesso de edição pode importar, triar e decidir batalhas.</div>
-  <div class="banner" id="noDb" hidden>Seu e-mail não tem acesso a esta página. Entre com o e-mail da Demarco ou peça acesso ao gestor.</div>
+  <div class="banner" id="noDb" hidden>Seu e-mail ainda não tem acesso a esta página. Peça ao gestor para incluir você na lista de acesso.</div>
 
   <!-- IMPORTAR -->
   <section class="view" id="v-importar" hidden>
@@ -276,14 +276,19 @@ body{margin:0;font-family:var(--f-body)}[hidden]{display:none!important}
   <!-- ACOMPANHAMENTO -->
   <section class="view" id="v-areas" hidden>
     <h2>Acompanhamento das áreas</h2>
-    <p class="lead">Quanto cada área já triou e ordenou. Para cada área, copie o link e envie para quem vai fazer a triagem e a Batalha Área. A pessoa entra com o e-mail da Demarco, sem precisar de cadastro.</p>
+    <p class="lead">Quanto cada área já triou e ordenou. Para cada área, copie o link e envie para quem vai fazer a triagem e a Batalha Área. A pessoa precisa estar na lista de usuários (abaixo) e entra com o próprio e-mail, sem senha.</p>
     <div class="summary" id="acStats"></div>
     <div class="tbl-wrap"><table><thead><tr><th>Área</th><th>Cards</th><th>Na triagem</th><th>Devolvidos</th><th>Na fila da batalha</th><th>Ordenados</th><th>Inativados</th><th>Última atividade</th><th>Link</th></tr></thead><tbody id="acBody"></tbody></table></div>
     <p class="meta" id="acNote" style="margin-top:12px"></p>
-    <h2 style="margin-top:28px">Gestores</h2>
-    <p class="lead">E-mails com acesso de gestor (importar bases, definir área e trilha, Batalha Final). Um por linha. Qualquer outro e-mail @demarco.com.br entra como área.</p>
-    <textarea id="gestoresTxt" rows="4" style="width:100%;max-width:520px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px;font:inherit"></textarea>
-    <div class="row" style="margin-top:8px"><button class="btn primary" id="btnGestores">Salvar gestores</button></div>
+    <h2 style="margin-top:28px">Quem tem acesso</h2>
+    <p class="lead">Só os e-mails destas duas listas entram na página (qualquer domínio). Um e-mail por linha.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+      <div><label class="lbl2" for="usuariosTxt">Usuários das áreas</label><p class="meta" style="margin:4px 0 6px">Fazem a triagem e a Batalha Área da própria área.</p>
+      <textarea id="usuariosTxt" rows="8" style="width:100%;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px;font:inherit"></textarea></div>
+      <div><label class="lbl2" for="gestoresTxt">Gestores</label><p class="meta" style="margin:4px 0 6px">Importam bases, definem área e trilha, fazem a Batalha Final.</p>
+      <textarea id="gestoresTxt" rows="8" style="width:100%;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px;font:inherit"></textarea></div>
+    </div>
+    <div class="row" style="margin-top:8px"><button class="btn primary" id="btnGestores">Salvar acessos</button><span class="meta">O gestor master (hannah.frotalegal@gmail.com) sempre tem acesso.</span></div>
   </section>
 
   <!-- CONCLUÍDOS -->
@@ -1114,7 +1119,7 @@ document.addEventListener("keydown",e=>{
 
 /* ---------- início ---------- */
 const remoteMeta={};
-const DOMINIO="@demarco.com.br";
+const MASTER=["hannah.frotalegal@gmail.com"];let usuarios=[];
 firebase.initializeApp({apiKey:"AIzaSyC8Je0qKt7riNY8NTip_jvAFN00tlmbjcU",authDomain:"priorizacao-cards.firebaseapp.com",projectId:"priorizacao-cards",storageBucket:"priorizacao-cards.firebasestorage.app",messagingSenderId:"258615516001",appId:"1:258615516001:web:7e7830c027f7d9c9e10320"});
 const auth=firebase.auth();
 window.claude={use:async n=>n==="downloads"?{save:async({filename,data})=>{const blob=data instanceof Blob?data:new Blob([data]);const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);return {status:"saved"}}}:null};
@@ -1151,13 +1156,16 @@ async function start(u){
   const h=(location.hash||"").replace(/^#/,"");
   let acc=null;
   try{const s=await db.doc("config/acesso").get();acc=s.exists?s.data():null}catch(e){acc=undefined}
-  if(acc===null){acc={gestores:[email]};try{await db.doc("config/acesso").set(acc)}catch(e){}}
-  gestores=((acc&&acc.gestores)||[]).map(x=>String(x).toLowerCase());
-  isGestor=gestores.includes(email);
-  if(acc===undefined||(!isGestor&&!email.endsWith(DOMINIO))){db=null;canWrite=false;$("#noDb").hidden=false;$("#metaLine").textContent="";render();return}
+  if(acc===null){acc={gestores:[email],usuarios:[]};try{await db.doc("config/acesso").set(acc)}catch(e){}}
+  const low=a=>(a||[]).map(x=>String(x).toLowerCase());
+  gestores=low(acc&&acc.gestores);usuarios=low(acc&&acc.usuarios);
+  isGestor=MASTER.includes(email)||gestores.includes(email);
+  if(acc===undefined||(!isGestor&&!usuarios.includes(email))){db=null;canWrite=false;$("#noDb").hidden=false;$("#metaLine").textContent="";render();return}
   canWrite=true;
-  $("#gestoresTxt").value=gestores.join("\n");
-  db.doc("config/acesso").onSnapshot(s=>{if(!s.exists)return;gestores=(s.data().gestores||[]).map(x=>String(x).toLowerCase());const g=gestores.includes(email);if(g!==isGestor){isGestor=g;render()}if(document.activeElement!==$("#gestoresTxt"))$("#gestoresTxt").value=gestores.join("\n")},()=>{});
+  $("#gestoresTxt").value=gestores.join("\n");$("#usuariosTxt").value=usuarios.join("\n");
+  db.doc("config/acesso").onSnapshot(s=>{if(!s.exists)return;gestores=low(s.data().gestores);usuarios=low(s.data().usuarios);const g=MASTER.includes(email)||gestores.includes(email);if(g!==isGestor){isGestor=g;render()}
+    if(!g&&!usuarios.includes(email)){location.reload();return}
+    if(document.activeElement!==$("#gestoresTxt"))$("#gestoresTxt").value=gestores.join("\n");if(document.activeElement!==$("#usuariosTxt"))$("#usuariosTxt").value=usuarios.join("\n")},()=>{});
   db.doc("base/meta").onSnapshot(s=>loadCards(s.exists?s.data():null).then(()=>{
     if(h.startsWith("area-")&&!applyHash._done){const a=allAreaNames().find(x=>"area-"+slug(x)===h);if(a){applyHash._done=1;myArea=a;try{localStorage.setItem("myArea",a)}catch(e){}render()}}
   }),()=>{});
@@ -1180,9 +1188,10 @@ async function start(u){
 }
 function applyHash(){}
 $("#btnGestores").addEventListener("click",async()=>{
-  if(!isGestor)return;const list=[...new Set($("#gestoresTxt").value.split(/[\s,;]+/).map(x=>x.trim().toLowerCase()).filter(x=>/^\S+@\S+\.\S+$/.test(x)))];
-  const me=(auth.currentUser.email||"").toLowerCase();if(!list.includes(me))list.push(me);
-  try{await db.doc("config/acesso").set({gestores:list});toast("Gestores salvos.")}catch(e){toast("Não consegui salvar os gestores.")}
+  if(!isGestor)return;const parse=id=>[...new Set($(id).value.split(/[\s,;]+/).map(x=>x.trim().toLowerCase()).filter(x=>/^\S+@\S+\.\S+$/.test(x)))];
+  const list=parse("#gestoresTxt"),us=parse("#usuariosTxt").filter(x=>!list.includes(x));
+  const me=(auth.currentUser.email||"").toLowerCase();if(!list.includes(me)&&!MASTER.includes(me))list.push(me);
+  try{await db.doc("config/acesso").set({gestores:list,usuarios:us});toast(`Acessos salvos: ${list.length} gestor(es), ${us.length} usuário(s).`)}catch(e){toast("Não consegui salvar os acessos.")}
 });
 function fsClean(v){return JSON.parse(JSON.stringify(v,(k,x)=>Array.isArray(x)?x.map(y=>Array.isArray(y)?Object.assign({},y):y):x))}
 let restoreData=null;
