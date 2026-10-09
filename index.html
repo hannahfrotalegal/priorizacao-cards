@@ -80,7 +80,7 @@ h2{font-family:var(--f-display);font-weight:700;font-size:20px;margin:0 0 4px;te
 .card .who{color:var(--muted);font-size:13px}
 .card .prob{font-size:14px;color:var(--fg);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:auto}
+.tri{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:auto}
 .tri button{border:1px solid var(--line);border-radius:8px;padding:8px 4px;font-weight:700;cursor:pointer;background:var(--surface)}
 .tri .a:hover{background:var(--alta-soft);color:var(--alta);border-color:var(--alta)}
 .tri .m:hover{background:var(--media-soft);color:var(--media);border-color:var(--media)}
@@ -218,7 +218,7 @@ body{margin:0;font-family:var(--f-body)}label.drop{display:block}[hidden]{displa
   <!-- TRIAGEM -->
   <section class="view" id="v-triagem" hidden>
     <h2>Triagem rápida</h2>
-    <p class="lead">Confira a área e a trilha (Sustentação ou Melhoria) e classifique cada card em Alta, Média ou Baixa. Cada trilha tem a própria priorização: cards de sustentação só competem entre si, e os de melhoria também. A ordem fina sai das batalhas: primeiro dentro de cada área, depois na batalha final.</p>
+    <p class="lead">Confira a área e a trilha (Sustentação ou Melhoria) e classifique cada card em Alta, Média ou Baixa, ou inative. Cada trilha tem a própria priorização: cards de sustentação só competem entre si, e os de melhoria também. A ordem fina sai das batalhas: primeiro dentro de cada área, depois na batalha final.</p>
     <div class="filters">
       <input id="triSearch" type="search" placeholder="Buscar por número, título ou solicitante">
       <select id="triTrk"><option value="">Todas as trilhas</option><option value="sust">Sustentação</option><option value="melh">Melhoria</option><option value="?">Trilha a definir</option><option value="sa">Sem área</option><option value="dev">Devolvidos pelas áreas</option></select>
@@ -302,7 +302,7 @@ body{margin:0;font-family:var(--f-body)}label.drop{display:block}[hidden]{displa
       <span class="spacer"></span>
       <button class="btn primary" id="btnExportCo">Exportar concluídos</button>
     </div>
-    <p class="lead">Para cada card concluído que estava no ranking geral, a página confere se havia cards mais bem priorizados da mesma trilha ainda abertos na data de conclusão. Se havia, a fila foi furada. A referência é a foto do ranking geral que valia no dia da conclusão: a página guarda uma foto a cada dia em que o ranking geral muda.</p>
+    <p class="lead">A fila que conta é a do <b>board</b>. Para cada card concluído, a página olha a priorização do dia da conclusão e confere se havia cards do mesmo board mais bem priorizados ainda abertos. Se havia, a fila foi furada. A posição na priorização geral aparece só para consulta. Vale para os cards concluídos a partir da próxima importação.</p>
     <div class="summary" id="coStats"></div>
     <div class="filters">
       <select id="coTrk"><option value="">Todas as trilhas</option><option value="sust">Sustentação</option><option value="melh">Melhoria</option></select>
@@ -604,16 +604,17 @@ function evaluate(P,fotos){
     const L=foto?foto.ordem:[],i=L.indexOf(id);
     const rec={id,t:c.t,bd:c.bd,ar:c.ar,tr,dtc:c.dtc,dtcFonte:c.dtcFonte,avaliadoEm:ts,fotoData:foto?foto.data:null};
     if(i>=0){
-      const acima=L.slice(0,i).filter(y=>{
+      // a fila que conta é a do próprio board: só cards do mesmo board acima dele na priorização
+      const acima=L.slice(0,i).filter(y=>bdOf(y)===c.bd).filter(y=>{
         if(P.ativos[y])return true;                          // segue aberto
         const dy=dtcOf(y);if(dy)return dy>dx;                // concluído depois dele
         const cy=cards[y];if(cy&&!cy.concl&&!P.boardsIn.includes(BD(cy)))return true; // board não reimportado: segue aberto
         return false;                                        // saiu da base ou foi inativado
       });
       const LB=L.filter(y=>bdOf(y)===c.bd);
-      Object.assign(rec,{aval:acima.length?"furou":"ok",posGeral:i+1,totalGeral:L.length,posBoard:LB.indexOf(id)+1,
-        nFurados:acima.length,nFuradosBoard:acima.filter(y=>bdOf(y)===c.bd).length,
-        furados:acima.slice(0,12).map(y=>({id:y,pos:L.indexOf(y)+1,bd:bdOf(y)}))});
+      Object.assign(rec,{aval:acima.length?"furou":"ok",regra:"board",posGeral:i+1,totalGeral:L.length,posBoard:LB.indexOf(id)+1,totalBoard:LB.length,
+        nFurados:acima.length,nFuradosBoard:acima.length,
+        furados:acima.slice(0,12).map(y=>({id:y,pos:LB.indexOf(y)+1,posGeral:L.indexOf(y)+1,bd:bdOf(y)}))});
     }else if(cur.has(id)){
       const l=locate(id);
       if(!foto)Object.assign(rec,{aval:"sem"});else Object.assign(rec,{aval:"fora",onde:foto?(l.w==="area"?"Ordenado só na área":l.w==="fila"?"Aguardando batalha da área":l.w==="triagem"?"Na triagem":"Fora da priorização")+` na foto de ${dayBr(foto.data)}`:"Concluído antes da primeira foto do ranking"});
@@ -692,10 +693,10 @@ function historicoOut(){return HIST.map(h=>{const d=new Date(h.em);return {"Data
 
 /* ---------- triagem ---------- */
 function triar(id,f){
-  if(!canWrite)return;
+  if(!canWrite)return;const antesI=f==="inativar"?onde(id):"";
   if(f!=="inativar"&&!TR(card(id)))return toast("Defina a trilha do card antes da faixa.");
   pushUndo();removeEverywhere(id);
-  if(f==="inativar"){S.inativos.push({id,em:now(),k:invKey(id)});toast(`${id} foi para a lista de inativos.`)}
+  if(f==="inativar"){S.inativos.push({id,em:now(),k:invKey(id)});logH(`inativou o card ${id} (${AK(card(id))} · ${TNOME[TR(card(id))]||"sem trilha"}).`,{card:id,tr:TR(card(id))});toast(`${id} foi inativado e saiu da priorização.`)}
   else{const k=AKEY(card(id));ensureArea(k);S.filaArea[k][f].push(id);logH(`classificou o card ${id} como ${FNOME[f]} na triagem (${AL(k)} · ${TNOME[KTR(k)]}).`,{card:id,tr:KTR(k)})}
   commit();
 }
@@ -761,7 +762,7 @@ function renderTriagem(){
     ${isGestor?`<div class="row" style="gap:6px"><label class="meta" for="ar-${esc(c.id)}">Área:</label><input id="ar-${esc(c.id)}" list="areasDL" data-sar="${esc(c.id)}" value="${AK(c)===SEM_AREA?"":esc(AK(c))}" placeholder="Escolha ou digite a área" style="flex:1;min-width:0;border:1px solid ${AK(c)===SEM_AREA?"var(--alta)":"var(--line)"};background:var(--surface);border-radius:8px;padding:5px 8px" ${gdis}></div>
     <div class="row" style="gap:6px"><span class="meta">Trilha:</span>${TRILHAS.map(t=>`<button class="btn small" data-str="${esc(c.id)}" data-t="${t}" aria-pressed="${TR(c)===t}" style="${TR(c)===t?"border-color:var(--accent);border-width:2px":""}" ${gdis}>${TNOME[t]}</button>`).join("")}</div>`
     :`<button class="link" data-devolver="${esc(c.id)}" ${dis}>Não é da minha área: devolver ao gestor</button>`}
-    <div class="tri"><button class="a" data-tri="${esc(c.id)}" data-f="alta" ${dis}>Alta</button><button class="m" data-tri="${esc(c.id)}" data-f="media" ${dis}>Média</button><button class="b" data-tri="${esc(c.id)}" data-f="baixa" ${dis}>Baixa</button></div>
+    <div class="tri"><button class="a" data-tri="${esc(c.id)}" data-f="alta" ${dis}>Alta</button><button class="m" data-tri="${esc(c.id)}" data-f="media" ${dis}>Média</button><button class="b" data-tri="${esc(c.id)}" data-f="baixa" ${dis}>Baixa</button><button class="i" data-tri="${esc(c.id)}" data-f="inativar" ${dis}>Inativar</button></div>
   </article>`).join("");
 }
 
@@ -941,7 +942,7 @@ function renderRanking(){
     if(!wait)acts+=`<button data-mv="${esc(r.id)}" data-d="-1" title="Subir" ${dis}>▲</button><button data-mv="${esc(r.id)}" data-d="1" title="Descer" ${dis}>▼</button>`;
     if(!wait&&rkMode!=="area")acts+=`<button data-rbf="${esc(r.id)}" title="Refazer a batalha final deste card" ${dis}>Rebater</button>`;
     if(!wait&&rkMode==="area")acts+=`<button data-rba="${esc(r.id)}" data-f="${r.f}" title="Refazer a batalha na área" ${dis}>Rebater</button>`;
-    acts+=`<select data-tier-of="${esc(r.id)}" aria-label="Mover card" ${dis}><option value="">Mover…</option>${FAIXAS.filter(x=>x!==r.f).map(x=>`<option value="${x}">Faixa ${FNOME[x]}</option>`).join("")}<option value="triagem">Voltar à triagem</option>${isGestor?`<option value="tr-${TRK==="sust"?"melh":"sust"}">Mudar para ${TNOME[TRK==="sust"?"melh":"sust"]}</option>`:""}</select>`;
+    acts+=`<select data-tier-of="${esc(r.id)}" aria-label="Mover card" ${dis}><option value="">Mover…</option>${FAIXAS.filter(x=>x!==r.f).map(x=>`<option value="${x}">Faixa ${FNOME[x]}</option>`).join("")}<option value="triagem">Voltar à triagem</option><option value="inativar">Inativar</option>${isGestor?`<option value="tr-${TRK==="sust"?"melh":"sust"}">Mudar para ${TNOME[TRK==="sust"?"melh":"sust"]}</option>`:""}</select>`;
     const ap=areaPos(r.id);
     html+=`<tr class="${wait?"wait":""}"><td class="pos">${wait?"—":r.pos}</td>${showGeral?`<td class="pos">${r.posGeral??"—"}</td>`:""}<td><span class="chip f-${r.f}">${FNOME[r.f]}${wait||rkMode==="board"?"":" "+r.posF}</span></td>
     <td><button class="link cid" data-det="${esc(r.id)}">${esc(r.id)}</button></td><td>${esc(c.t)}${wait?` <span class="meta">(${r.sit.toLowerCase()})</span>`:""}</td>
@@ -990,8 +991,11 @@ function renderMyAreaBar(){
 }
 
 /* ---------- concluídos ---------- */
+// Concluídos zerados em 09/10/2026: só contam avaliações feitas depois deste momento (próximas importações)
+const CORTE_CONCLUIDOS="2026-10-09T13:31:00Z";
+const avalValida=r=>(r.aval==="ok"||r.aval==="furou")&&String(r.avaliadoEm||"")>=CORTE_CONCLUIDOS;
 function concluidosRows(){
-  const rows=Object.values(AV).filter(r=>r.aval==="ok"||r.aval==="furou").map(r=>({...r}));
+  const rows=Object.values(AV).filter(avalValida).map(r=>({...r}));
   rows.sort((a,b)=>String(b.dtc||"").localeCompare(String(a.dtc||"")));
   return rows;
 }
@@ -999,7 +1003,7 @@ const furObj=x=>Array.isArray(x)?{id:x[0],pos:x[1],bd:x[2]}:x;
 const AVNOME={ok:"Seguiu a fila",furou:"Furou a fila",fora:"Fora do ranking geral",sem:"Sem avaliação"};
 function avalHtml(r){
   if(r.aval==="ok")return `<span class="chip ok">Seguiu a fila</span>`;
-  if(r.aval==="furou")return `<span class="chip bad">Furou a fila · ${r.nFurados} acima ainda abertos</span>${r.nFuradosBoard!==undefined?`<div class="furados">${r.nFuradosBoard} do mesmo board</div>`:""}<div class="furados">Passou na frente de: ${(r.furados||[]).map(furObj).map(({id:y,pos:p,bd:b})=>`<button class="link" data-det="${esc(y)}">${esc(y)}</button> (${p}º, ${esc(b)})`).join(", ")}${r.nFurados>(r.furados||[]).length?"…":""}</div>`;
+  if(r.aval==="furou")return `<span class="chip bad">Furou a fila do board · ${r.nFurados} card${r.nFurados>1?"s":""} acima ainda aberto${r.nFurados>1?"s":""}</span><div class="furados">Passou na frente de: ${(r.furados||[]).map(furObj).map(({id:y,pos:p})=>`<button class="link" data-det="${esc(y)}">${esc(y)}</button> (${p}º no board)`).join(", ")}${r.nFurados>(r.furados||[]).length?"…":""}</div>`;
   if(r.aval==="fora")return `<span class="chip na">Fora do ranking geral</span><div class="furados">${esc(r.onde||"")}</div>`;
   return `<span class="chip na">Sem avaliação</span><div class="furados">Concluído antes de entrar na priorização</div>`;
 }
@@ -1015,13 +1019,13 @@ function renderConcluidos(){
   if(!rows.length){$("#coBody").innerHTML=`<tr><td colspan="8"><div class="empty" style="border:0"><b>${all.length?"Nada com esse filtro":"Nenhum card concluído ainda"}</b>${all.length?"Limpe os filtros.":"Os concluídos aparecem aqui quando vierem nas bases importadas."}</div></td></tr>`;return}
   $("#coBody").innerHTML=rows.map(r=>`<tr><td><button class="link cid" data-det="${esc(r.id)}">${esc(r.id)}</button></td><td>${esc(r.t)}</td><td>${esc(TNOME[r.tr]||"—")}</td><td>${esc(r.bd||"—")}</td><td>${esc(r.ar||SEM_AREA)}</td>
     <td>${fmtDate(r.dtc,true)||"—"}${r.dtcFonte==="importacao"?' <span class="meta">(data da importação)</span>':""}</td>
-    <td>${r.posGeral?`${r.posGeral}º de ${r.totalGeral} em ${esc(TNOME[r.tr]||"")}${r.posBoard?`<div class="furados">${r.posBoard}º no board</div>`:""}${r.fotoData?`<div class="furados">foto de ${dayBr(r.fotoData)}</div>`:""}`:"—"}</td><td>${avalHtml(r)}</td></tr>`).join("");
+    <td>${r.posGeral?`${r.posBoard?`${r.posBoard}º${r.totalBoard?` de ${r.totalBoard}`:""} no board`:"—"}<div class="furados">${r.posGeral}º de ${r.totalGeral} na priorização geral de ${esc(TNOME[r.tr]||"")}</div>${r.fotoData?`<div class="furados">foto de ${dayBr(r.fotoData)}</div>`:""}`:"—"}</td><td>${avalHtml(r)}</td></tr>`).join("");
 }
 
 /* ---------- exportação ---------- */
 function rowOut(r,geral){const c=card(r.id);return {"Trilha":TNOME[TR(c)]||"","Posição geral":geral?(r.pos??""):(r.posGeral??""),"Faixa":FNOME[r.f]||"","Posição na faixa":geral?(r.posF??""):"","Board":BD(c),"Posição no board":boardPos(r.id)??"","Área":AK(c),"Posição na área":areaPos(r.id)??"","Situação":r.sit,"Card":r.id,"Título":c.t,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Cliente(s)":c.cli,"Tipo de demanda":c.tipo,"Nível de impacto":c.imp,"Solicitante":c.sol,"Área do solicitante":c.area,"Criado em":c.criado}}
-function inativosOut(){return S.inativos.map(x=>{const c=card(x.id);return {"Card":x.id,"Título":c.t,"Trilha":TNOME[TR(c)]||"","Board":BD(c),"Área":AK(c),"Solicitante":c.sol,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Marcado para inativar em":fmtDate(x.em)}})}
-function concluidosOut(){return concluidosRows().map(r=>({"Card":r.id,"Título":r.t,"Trilha":TNOME[r.tr]||"","Board":r.bd,"Área":r.ar||SEM_AREA,"Concluído em":fmtDate(r.dtc,true),"Fonte da data":r.dtcFonte==="importacao"?"Data da importação":"Log do board","Posição geral quando concluído":r.posGeral??"","Total no ranking":r.totalGeral??"","Posição no board":r.posBoard??"","Foto do ranking usada":r.fotoData?dayBr(r.fotoData):"","Avaliação":AVNOME[r.aval],"Cards acima ainda abertos":r.nFurados??"","Do mesmo board":r.nFuradosBoard??"","Passou na frente de":(r.furados||[]).map(furObj).map(({id:y,pos:p})=>`${y} (${p}º)`).join(", "),"Observação":r.onde||""}))}
+function inativosOut(){return S.inativos.map(x=>{const c=card(x.id);return {"Card":x.id,"Título":c.t,"Trilha":TNOME[TR(c)]||"","Board":BD(c),"Área":AK(c),"Solicitante":c.sol,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Inativado em":fmtDate(x.em)}})}
+function concluidosOut(){return concluidosRows().map(r=>({"Card":r.id,"Título":r.t,"Trilha":TNOME[r.tr]||"","Board":r.bd,"Área":r.ar||SEM_AREA,"Concluído em":fmtDate(r.dtc,true),"Fonte da data":r.dtcFonte==="importacao"?"Data da importação":"Log do board","Posição geral quando concluído":r.posGeral??"","Total no ranking":r.totalGeral??"","Posição no board":r.posBoard??"","Foto do ranking usada":r.fotoData?dayBr(r.fotoData):"","Avaliação":AVNOME[r.aval],"Cards acima ainda abertos":r.nFurados??"","Do mesmo board":r.nFuradosBoard??"","Passou na frente de":(r.furados||[]).map(furObj).map(({id:y,pos:p})=>`${y} (${p}º no board)`).join(", "),"Observação":r.onde||""}))}
 const sheetName=(p,k)=>(p+k).replace(/[\\\/\?\*\[\]:]/g," ").slice(0,31);
 async function exportXlsx(kind){
   const dl=await claude.use("downloads");
@@ -1039,6 +1043,7 @@ async function exportXlsx(kind){
     TRK=keepT;
   }
   if(kind==="historico")add(historicoOut(),"Histórico",[11,7,24,30,12,9,90]);
+  if(kind==="tudo"&&isGestor)add(inativosOut(),"Inativados",[9,60,12,18,24,22,12,26,20]);
   if(kind==="tudo"||kind==="concluidos")add(concluidosOut(),"Concluídos",[9,60,12,18,24,12,16,12,10,10,14,22,12,10,50,26]);
   const buf=XLSX.write(wb,{type:"array",bookType:"xlsx"});
   const d=new Date().toISOString().slice(0,10);
@@ -1073,7 +1078,7 @@ function render(){
   $("#c-barea").textContent=keys.filter(k=>!myArea||AL(k)===myArea).reduce((n,k)=>n+pendArea(k),0);
   $("#c-bfinal").textContent=FAIXAS.reduce((n,f)=>n+pendFinal(f),0);
   $("#c-ranking").textContent=FAIXAS.reduce((n,f)=>n+FIN()[f].length,0);
-  $("#c-concluidos").textContent=Object.values(AV).filter(r=>r.aval==="ok"||r.aval==="furou").length;
+  $("#c-concluidos").textContent=Object.values(AV).filter(avalValida).length;
   const imp=S.importacoes||{},bs=Object.keys(imp);
   const u=S.ultimaImportacao;
   $("#metaLine").textContent=bs.length?bs.map(b=>`${b}: ${fmtDate(imp[b].em,true)}`).join(" · "):u?`Base: ${u.arquivo} · ${fmtDate(u.em)}`:"Nenhuma base importada ainda";
