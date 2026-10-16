@@ -139,6 +139,7 @@ dialog::backdrop{background:rgba(10,16,22,.55)}
 .filerow .fn{flex:1 1 260px;min-width:0;overflow-wrap:anywhere;font-weight:600}
 .filerow select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px}
 .chip.ok{background:var(--baixa-soft);color:var(--baixa)} .chip.bad{background:var(--alta-soft);color:var(--alta)} .chip.na{background:var(--surface-2);color:var(--muted)}
+.chip.fase{background:var(--surface);border:1px dashed var(--line);color:var(--fg)}
 .chip.bd{background:var(--accent);color:var(--accent-ink)}
 .furados{font-size:13px;color:var(--muted);margin-top:2px}
 body{margin:0;font-family:var(--f-body)}label.drop{display:block}[hidden]{display:none!important}
@@ -667,8 +668,10 @@ function onde(id){
   if(l.w==="fila")return `fila da Batalha Área de ${AL(l.k)}, faixa ${FNOME[l.f]}`;
   return "triagem";
 }
+// tipos que não entram no histórico (nem os já gravados aparecem)
+const HIST_OCULTO=/^(posicionou o card|classificou o card .* na triagem|mudou a área do card)/;
 function logH(txt,extra={}){
-  if(!db||!canWrite)return;
+  if(!db||!canWrite||HIST_OCULTO.test(txt))return;
   const rec={em:now(),email:ME.email||"",nome:ME.nome||"",txt,card:extra.card||"",tr:extra.tr||""};
   HIST.unshift(rec);
   try{const r=db.collection("historico").add(rec);if(r&&r.catch)r.catch(()=>{})}catch(e){}
@@ -677,7 +680,7 @@ function logH(txt,extra={}){
 function trDe(id){const c=card(id);const l=locate(id);return TR(c)||(l.k?KTR(l.k):"")}
 function startHist(){
   if(histSub||!db)return;
-  try{histSub=db.collection("historico").orderBy("em","desc").limit(1000).onSnapshot(q=>{HIST=q.docs.map(d=>d.data());if(view==="historico")renderHistorico()},()=>{})}catch(e){}
+  try{histSub=db.collection("historico").orderBy("em","desc").limit(1000).onSnapshot(q=>{HIST=q.docs.map(d=>d.data()).filter(h=>!HIST_OCULTO.test(h.txt||""));if(view==="historico")renderHistorico()},()=>{})}catch(e){}
 }
 function renderHistorico(){
   startHist();
@@ -732,9 +735,8 @@ function chipsHtml(c,o={}){
   if(o.tier)ch.push(`<span class="chip f-${o.tier}">${FNOME[o.tier]}</span>`);
   const tr=TR(c);ch.push(tr?`<span class="chip">${TNOME[tr]}</span>`:`<span class="chip bad">Trilha a definir</span>`);
   ch.push(`<span class="chip bd">${esc(BD(c))}</span>`);
-  if(c.sis)ch.push(`<span class="chip">${esc(c.sis)}</span>`);
   ch.push(`<span class="chip ar">${esc(AK(c))}</span>`);
-  if(catOf(c)==="iniciado")ch.push(`<span class="chip ini" title="${esc(c.fase)}">Já iniciado</span>`);
+  if(c.fase)ch.push(`<span class="chip fase">Fase: ${esc(c.fase)}</span>`);
   return ch.join("");
 }
 function fillSelect(sel,vals,label){const cur=sel.value;sel.innerHTML=`<option value="">${label}</option>`+[...new Set(vals.filter(Boolean))].sort(sortPt).map(v=>`<option${v===cur?" selected":""}>${esc(v)}</option>`).join("")}
@@ -753,7 +755,7 @@ function renderTriagem(){
   if(!list.length){$("#triGrid").innerHTML=`<div class="empty" style="grid-column:1/-1"><b>Nenhum card com esse filtro</b>Limpe os filtros para ver os ${all.length} cards.</div>`;return}
   const dis=canWrite?"":"disabled",gdis=isGestor&&canWrite?"":"disabled";
   $("#triGrid").innerHTML=list.map(c=>`<article class="card">
-    <div class="row"><span class="cid">${esc(c.id)}</span><span class="spacer"></span><span class="meta">${esc(c.fase)}</span></div>
+    <div class="row"><span class="cid">${esc(c.id)}</span><span class="spacer"></span></div>
     <h4>${esc(c.t)}</h4><div class="chips">${chipsHtml(c)}</div>
     <div class="who">${esc(c.sol||"Solicitante não informado")}${c.criado?" · "+esc(c.criado):""}</div>
     ${c.prob?`<div class="prob">${esc(c.prob)}</div>`:""}
@@ -833,7 +835,7 @@ function undoStep(){const a=S.atual;if(!a||!a.passos.length)return;{const p=a.pa
 function skipArea(){const a=S.atual;if(!a||a.modo!=="area")return;const q=S.filaArea[a.k][a.f];S.filaArea[a.k][a.f]=q.filter(i=>i!==a.id).concat(a.id);S.atual=null;commit()}
 function backToTriage(id){const antes=onde(id);logH(`devolveu o card ${id} para a triagem (estava em ${antes}).`,{card:id,tr:trDe(id)});pushUndo();removeEverywhere(id);S.semFaixa.unshift(id);S.atual=null;commit();toast(`${id} voltou para a triagem.`)}
 function fighterHtml(c,role,side,extra){
-  return `<div class="fighter"><div class="role">${role}</div><div class="row"><span class="cid">${esc(c.id)}</span><span class="meta">${esc(c.fase||"")}</span></div>
+  return `<div class="fighter"><div class="role">${role}</div><div class="row"><span class="cid">${esc(c.id)}</span></div>
   <h3>${esc(c.t)}</h3><div class="chips">${chipsHtml(c)}</div>${extra||""}
   <div class="meta">${esc(c.sol||"Solicitante não informado")}${c.area?" · "+esc(c.area):""}${c.criado?" · aberto em "+esc(c.criado):""}</div>
   ${c.prob?`<div class="lbl">Problema</div><div class="txt">${esc(c.prob)}</div>`:(c.aj?`<div class="lbl">Ajuste pedido</div><div class="txt">${esc(c.aj)}</div>`:"")}
