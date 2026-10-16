@@ -586,7 +586,7 @@ function compareFiles(){
     const nIni=ids.filter(i=>catOf(ativos[i])==="iniciado").length;
     pendingImport={files:pendingFiles.map(f=>({name:f.name,bd:f.bd})),boardsIn:[...boardsIn],ativos,concl,novos,saidas,inConf,mudouArea,conclRank};
     const st=first?[["Cards ativos",ids.length],["Em backlog",ids.length-nIni],["Já iniciados",nIni],["Concluídos",Object.keys(concl).length],["Inativos ignorados",inat]]
-      :[["Cards ativos",ids.length],["Novos (vão para triagem)",novos.length],["Concluídos desde a última base",conclRank.length],["Saíram da base",saidas.length],["Inativação confirmada",inConf.length],["Mudaram de área/trilha",mudouArea.length],["Inativos ignorados",inat]];
+      :[["Cards ativos",ids.filter(i=>!inIds.has(i)).length],["Novos (vão para triagem)",novos.length],["Concluídos desde a última base",conclRank.length],["Saíram da base",saidas.length],["Mudaram de área/trilha",mudouArea.length],["Inativos ignorados",inat]];
     $("#impStats").innerHTML=st.map(([l,n])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join("");
     const li=(arr,src)=>arr.slice(0,200).map(i=>`<li><span class="cid">${esc(i)}</span> ${esc((src[i]||cards[i]||{}).t||"")} <span class="meta">· ${esc(BD(src[i]||cards[i]))}</span></li>`).join("");
     let lists=avisos.length?`<div class="list-mini"><h3>Avisos</h3><ul>${avisos.slice(0,50).map(a=>`<li>${esc(a)}</li>`).join("")}</ul></div>`:"";
@@ -596,7 +596,6 @@ function compareFiles(){
       if(novos.length)lists+=`<div class="list-mini"><h3>Novos</h3><ul>${li(novos,ativos)}</ul></div>`;
       if(conclRank.length)lists+=`<div class="list-mini"><h3>Concluídos (saem da priorização e vão para a aba Concluídos com a avaliação)</h3><ul>${li(conclRank,concl)}</ul></div>`;
       if(saidas.length)lists+=`<div class="list-mini"><h3>Saem da priorização (não vieram ativos na base)</h3><ul>${li(saidas,cards)}</ul></div>`;
-      if(inConf.length)lists+=`<div class="list-mini"><h3>Saem da lista de inativos (já inativados)</h3><ul>${li(inConf,cards)}</ul></div>`;
       if(mudouArea.length)lists+=`<div class="list-mini"><h3>Mudaram de área ou trilha (refazem a batalha na área ou trilha nova, mesma faixa)</h3><ul>${mudouArea.map(i=>`<li><span class="cid">${esc(i)}</span> ${esc(TNOME[KTR(locate(i).k)])} · ${esc(AL(locate(i).k))} → ${esc(TNOME[TR(ativos[i])])} · ${esc(AK(ativos[i]))}</li>`).join("")}</ul></div>`;
     }
     $("#impLists").innerHTML=lists;
@@ -988,9 +987,8 @@ function renderAreas(){
     const tri=S.semFaixa.filter(id=>AK(card(id))===a);
     const dev=tri.filter(id=>S.devolvidos[id]).length;
     const fila=ks.reduce((n,k)=>n+pendArea(k),0),ord=ks.reduce((n,k)=>n+FAIXAS.reduce((m,f)=>m+(S.area[k]?S.area[k][f].length:0),0),0);
-    const ina=S.inativos.filter(x=>AK(card(x.id))===a).length;
     let ult=null;ks.forEach(k=>{const d=remoteMeta[areaPath(k)];if(d&&(!ult||d>ult))ult=d});
-    return {a,total:tri.length+fila+ord+ina,tri:tri.length-dev,dev,fila,ord,ina,ult};
+    return {a,total:tri.length+fila+ord,tri:tri.length-dev,dev,fila,ord,ult};
   });
   const semA=S.semFaixa.filter(id=>AK(card(id))===SEM_AREA).length,semT=S.semFaixa.filter(id=>!TR(card(id))).length,devT=Object.keys(S.devolvidos||{}).length;
   const prontas=rows.filter(r=>!r.tri&&!r.fila&&r.total).length;
@@ -1268,7 +1266,7 @@ async function start(u){
   db.doc("config/acesso").onSnapshot(s=>{if(!s.exists)return;const d=s.data();gestores=low(d.gestores);usuarios=low(d.usuarios);const g=MASTER.includes(email)||gestores.includes(email);if(g!==isGestor)isGestor=g;
     if(!g&&!usuarios.includes(email)){location.reload();return}
     if(!pessoasSujo)setPessoas(d);ME.nome=nomePessoa(email)||ME.nome;aplicarAreaFixa(g,areaDe(d,email));render()},()=>{});
-  db.doc("base/meta").onSnapshot(s=>loadCards(s.exists?s.data():null).then(()=>{
+  db.doc("base/meta").onSnapshot(s=>loadCards(s.exists?s.data():null).then(()=>{renderPessoas();
     if(h.startsWith("area-")&&!applyHash._done&&isGestor){const a=allAreaNames().find(x=>"area-"+slug(x)===h);if(a){applyHash._done=1;myArea=a;try{localStorage.setItem("myArea",a)}catch(e){}render()}}
   }),()=>{});
   db.doc("state/avaliacoes").onSnapshot(s=>{AV=s.exists?JSON.parse(JSON.stringify(s.data().itens||{})):{};render()},()=>{});
@@ -1303,13 +1301,12 @@ function setPessoas(acc){
 }
 function renderPessoas(){
   const inp='style="width:100%;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px;font:inherit"';
-  let dl=document.getElementById("pessoasAreasDL");if(!dl){dl=document.createElement("datalist");dl.id="pessoasAreasDL";document.body.appendChild(dl)}
-  dl.innerHTML=allAreaNames().map(a=>`<option value="${esc(a)}"></option>`).join("");
+  const areasLista=allAreaNames().sort(sortPt);
   $("#pessoasBody").innerHTML=PESSOAS.map((p,i)=>{const m=MASTER.includes(p.email);return `<tr>
     <td><input ${inp} data-pn="${i}" value="${esc(p.nome)}" placeholder="Nome"></td>
     <td><input ${inp} data-pe="${i}" value="${esc(p.email)}" placeholder="e-mail" ${m?"disabled":""}></td>
     <td><select data-pp="${i}" ${m?"disabled":""} style="border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px"><option value="usuario"${p.papel!=="gestor"?" selected":""}>Usuário de área</option><option value="gestor"${p.papel==="gestor"?" selected":""}>Gestor</option></select></td>
-    <td>${p.papel==="gestor"?'<span class="meta">Todas</span>':`<input ${inp} data-pa="${i}" list="pessoasAreasDL" value="${esc(p.area||"")}" placeholder="Escolha a área">`}</td>
+    <td>${p.papel==="gestor"?'<span class="meta">Todas</span>':`<select data-pa="${i}" style="width:100%;border:1px solid ${p.area?"var(--line)":"var(--alta)"};background:var(--surface);border-radius:8px;padding:6px"><option value="">Escolha a área…</option>${[...new Set([...(p.area&&!areasLista.includes(p.area)?[p.area]:[]),...areasLista])].map(a=>`<option value="${esc(a)}"${a===p.area?" selected":""}>${esc(a)}${areasLista.includes(a)?"":" (sem cards hoje)"}</option>`).join("")}</select>`}</td>
     <td>${m?'<span class="meta">master</span>':`<button class="btn small" data-prm="${i}">Remover</button>`}</td></tr>`}).join("");
 }
 document.addEventListener("input",e=>{const t=e.target;if(!t.dataset)return;
@@ -1317,7 +1314,8 @@ document.addEventListener("input",e=>{const t=e.target;if(!t.dataset)return;
   if(t.dataset.pe!==undefined){PESSOAS[+t.dataset.pe].email=t.value.trim().toLowerCase();pessoasSujo=true}
   if(t.dataset.pp!==undefined){PESSOAS[+t.dataset.pp].papel=t.value;pessoasSujo=true}
   if(t.dataset.pa!==undefined){PESSOAS[+t.dataset.pa].area=t.value;pessoasSujo=true}});
-document.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.pp!==undefined){PESSOAS[+t.dataset.pp].papel=t.value;pessoasSujo=true;renderPessoas()}});
+document.addEventListener("change",e=>{const t=e.target;if(t.dataset&&t.dataset.pp!==undefined){PESSOAS[+t.dataset.pp].papel=t.value;pessoasSujo=true;renderPessoas()}
+  if(t.dataset&&t.dataset.pa!==undefined){PESSOAS[+t.dataset.pa].area=t.value;pessoasSujo=true;renderPessoas()}});
 document.addEventListener("click",e=>{const t=e.target;if(t.dataset&&t.dataset.prm!==undefined){PESSOAS.splice(+t.dataset.prm,1);pessoasSujo=true;renderPessoas()}});
 $("#btnAddPessoa").addEventListener("click",()=>{PESSOAS.push({email:"",nome:"",papel:"usuario"});pessoasSujo=true;renderPessoas();const ins=document.querySelectorAll("[data-pn]");if(ins.length)ins[ins.length-1].focus()});
 $("#btnGestores").addEventListener("click",async()=>{
