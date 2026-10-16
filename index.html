@@ -430,11 +430,18 @@ function areaDocsData(){
     const ids=new Set(FAIXAS.flatMap(f=>area[f]));const pos={};Object.keys(S.posicionadoEm||{}).forEach(id=>{if(ids.has(id))pos[id]=S.posicionadoEm[id]});
     out[areaPath(k)]={k,area,fila,inativos:S.inativos.filter(x=>x.k===k).map(x=>({id:x.id,em:x.em})),devolvidos:Object.entries(S.devolvidos||{}).filter(([,d])=>d.k===k).map(([id,d])=>({id,em:d.em})),posicionadoEm:pos};
   }
+  // trilhas definidas por card, agrupadas por área: areas/trilhas-<área>
+  const tri={};
+  Object.entries(S.trilhaManual||{}).forEach(([id,tr])=>{const c=cards[id];if(!c)return;const a=AK(c);if(a===SEM_AREA)return;(tri[a]=tri[a]||{})[id]=tr});
+  for(const p of Object.keys(remote))if(p.startsWith("areas/")&&remote[p].tipo==="trilhas")out[p]={tipo:"trilhas",area:remote[p].area,trilhas:{}};
+  Object.entries(tri).forEach(([a,m])=>{out[triPath(a)]={tipo:"trilhas",area:a,trilhas:m}});
   return out;
 }
+const triPath=a=>"areas/trilhas-"+slug(a);
 async function writeDoc(p,data){
   const cur=docFor(p);if(cur&&stable(cur)===stable(data))return;
-  if(!cur&&p.startsWith("areas/")&&!FAIXAS.some(f=>data.area[f].length||data.fila[f].length)&&!data.inativos.length&&!data.devolvidos.length)return;
+  if(!cur&&p.startsWith("areas/")&&data.tipo==="trilhas"&&!Object.keys(data.trilhas).length)return;
+  if(!cur&&p.startsWith("areas/")&&data.k&&!FAIXAS.some(f=>data.area[f].length||data.fila[f].length)&&!data.inativos.length&&!data.devolvidos.length)return;
   pend[p]=JSON.parse(JSON.stringify(data));
   if(writingDoc[p])return;
   writingDoc[p]=true;
@@ -465,6 +472,7 @@ function rebuild(){
     n.area=JSON.parse(JSON.stringify(m.area||{}));n.filaArea=JSON.parse(JSON.stringify(m.filaArea||{}));
     n.inativos=(m.inativos||[]).map(x=>({id:x.id,em:x.em,k:invKey(x.id)}));n.posicionadoEm=Object.assign({},m.posicionadoEm||{});
   }
+  for(const p of paths){if(!p.startsWith("areas/"))continue;const d=docFor(p);if(d&&d.tipo==="trilhas")Object.assign(n.trilhaManual,d.trilhas||{})}
   for(const p of paths){if(!p.startsWith("areas/"))continue;const d=docFor(p);if(!d||!d.k)continue;
     n.area[d.k]=d.area||emptyF();n.filaArea[d.k]=d.fila||emptyF();
     (d.inativos||[]).forEach(x=>n.inativos.push({id:x.id,em:x.em,k:d.k}));
@@ -720,8 +728,9 @@ function setArea(id,val){
   logH(`mudou a área do card ${id} de ${before} para ${AK(card(id))}`+(l.f?` (estava em ${antesA}; volta para a Batalha Área da nova área).`:"."),{card:id,tr:trDe(id)});
   commit();
 }
+function podeTrilha(id){return canWrite&&(isGestor||(myArea&&AK(card(id))===myArea&&S.semFaixa.includes(id)))}
 function setTrilha(id,tr){
-  if(!isGestor)return;const trAntes=TR(card(id)),antesT=onde(id);if(trAntes===tr)return;pushUndo();if(S.devolvidos)delete S.devolvidos[id];
+  if(!podeTrilha(id))return;const trAntes=TR(card(id)),antesT=onde(id);if(trAntes===tr)return;pushUndo();if(S.devolvidos)delete S.devolvidos[id];
   S.trilhaManual=S.trilhaManual||{};S.trilhaManual[id]=tr;
   const l=locate(id);
   if(l.f){removeEverywhere(id);const k=AKEY(card(id));ensureArea(k);S.filaArea[k][l.f].unshift(id);S.atual=null;toast(`${id} agora é ${TNOME[tr]} e vai para a Batalha Área dessa trilha.`)}
@@ -743,7 +752,7 @@ function fillSelect(sel,vals,label){const cur=sel.value;sel.innerHTML=`<option v
 function renderTriagem(){
   let all=S.semFaixa.map(card);
   const devN=all.filter(c=>S.devolvidos[c.id]&&inMyArea(c)).length;
-  if(!isGestor)all=all.filter(c=>inMyArea(c)&&TR(c)&&AK(c)!==SEM_AREA&&!S.devolvidos[c.id]);
+  if(!isGestor)all=all.filter(c=>inMyArea(c)&&AK(c)!==SEM_AREA&&!S.devolvidos[c.id]);
   else if(myArea)all=all.filter(inMyArea);
   $("#areasDL").innerHTML=allAreaNames().map(a=>`<option value="${esc(a)}"></option>`).join("");
   fillSelect($("#triBoard"),all.map(BD),"Todos os boards");fillSelect($("#triArea"),all.map(AK),"Todas as áreas");fillSelect($("#triCli"),all.map(c=>c.cli),"Todos os clientes");
@@ -762,8 +771,8 @@ function renderTriagem(){
     <button class="link" data-det="${esc(c.id)}">Ver descrição completa</button>
     ${S.devolvidos[c.id]?`<div class="row" style="gap:6px"><span class="chip bad">Devolvido por ${esc(AL(S.devolvidos[c.id].k))} em ${fmtDate(S.devolvidos[c.id].em,true)}</span>${isGestor?`<button class="btn small" data-keep="${esc(c.id)}" ${gdis}>Manter nesta área</button>`:""}</div>`:""}
     ${isGestor?`<div class="row" style="gap:6px"><label class="meta" for="ar-${esc(c.id)}">Área:</label><input id="ar-${esc(c.id)}" list="areasDL" data-sar="${esc(c.id)}" value="${AK(c)===SEM_AREA?"":esc(AK(c))}" placeholder="Escolha ou digite a área" style="flex:1;min-width:0;border:1px solid ${AK(c)===SEM_AREA?"var(--alta)":"var(--line)"};background:var(--surface);border-radius:8px;padding:5px 8px" ${gdis}></div>
-    <div class="row" style="gap:6px"><span class="meta">Trilha:</span>${TRILHAS.map(t=>`<button class="btn small" data-str="${esc(c.id)}" data-t="${t}" aria-pressed="${TR(c)===t}" style="${TR(c)===t?"border-color:var(--accent);border-width:2px":""}" ${gdis}>${TNOME[t]}</button>`).join("")}</div>`
-    :`<button class="link" data-devolver="${esc(c.id)}" ${dis}>Não é da minha área: devolver ao gestor</button>`}
+`:`<button class="link" data-devolver="${esc(c.id)}" ${dis}>Não é da minha área: devolver ao gestor</button>`}
+    <div class="row" style="gap:6px"><span class="meta">Trilha:</span>${TRILHAS.map(t=>`<button class="btn small" data-str="${esc(c.id)}" data-t="${t}" aria-pressed="${TR(c)===t}" style="${TR(c)===t?"border-color:var(--accent);border-width:2px":""}" ${podeTrilha(c.id)?"":"disabled"}>${TNOME[t]}</button>`).join("")}</div>
     <div class="tri"><button class="a" data-tri="${esc(c.id)}" data-f="alta" ${dis}>Alta</button><button class="m" data-tri="${esc(c.id)}" data-f="media" ${dis}>Média</button><button class="b" data-tri="${esc(c.id)}" data-f="baixa" ${dis}>Baixa</button><button class="i" data-tri="${esc(c.id)}" data-f="inativar" ${dis}>Inativar</button></div>
   </article>`).join("");
 }
@@ -1076,7 +1085,7 @@ function render(){
   const useTrk=["barea","bfinal","ranking"].includes(view);
   $("#trkBar").hidden=!useTrk;
   if(useTrk)$("#trkBar").innerHTML=`<span class="lbl2">Trilha</span>`+TRILHAS.map(t=>{const n=areaKeys(t).reduce((a,k)=>a+pendArea(k),0);return `<button data-trk="${t}" aria-pressed="${TRK===t}">${TNOME[t]} · ${FAIXAS.reduce((a,f)=>a+S.fin[t][f].length,0)} no ranking${n?` · ${n} na área`:""}</button>`}).join("");
-  $("#c-triagem").textContent=S.semFaixa.filter(id=>{const c=card(id);return isGestor?inMyArea(c):inMyArea(c)&&TR(c)&&AK(c)!==SEM_AREA&&!S.devolvidos[id]}).length;
+  $("#c-triagem").textContent=S.semFaixa.filter(id=>{const c=card(id);return isGestor?inMyArea(c):inMyArea(c)&&AK(c)!==SEM_AREA&&!S.devolvidos[id]}).length;
   $("#c-barea").textContent=keys.filter(k=>!myArea||AL(k)===myArea).reduce((n,k)=>n+pendArea(k),0);
   $("#c-bfinal").textContent=FAIXAS.reduce((n,f)=>n+pendFinal(f),0);
   $("#c-ranking").textContent=FAIXAS.reduce((n,f)=>n+FIN()[f].length,0);
