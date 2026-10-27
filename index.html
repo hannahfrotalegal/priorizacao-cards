@@ -139,6 +139,7 @@ dialog::backdrop{background:rgba(10,16,22,.55)}
 .filerow .fn{flex:1 1 260px;min-width:0;overflow-wrap:anywhere;font-weight:600}
 .filerow select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px}
 .chip.ok{background:var(--baixa-soft);color:var(--baixa)} .chip.bad{background:var(--alta-soft);color:var(--alta)} .chip.na{background:var(--surface-2);color:var(--muted)}
+.chip.furacao{background:#7c2d12;color:#fff}
 .chip.fase{background:var(--surface);border:1px dashed var(--line);color:var(--fg)}
 .chip.bd{background:var(--accent);color:var(--accent-ink)}
 .furados{font-size:13px;color:var(--muted);margin-top:2px}
@@ -340,7 +341,7 @@ let writing=false, dirty=false, pendingImport=null, pendingFiles=[], undoStack=[
 let selArea=null, selAreaTier=null, selFinalTier=null, rkMode="geral", rkKey=null;
 
 function emptyFin(){return {sust:{alta:[],media:[],baixa:[]},melh:{alta:[],media:[],baixa:[]}}}
-function emptyState(){return {v:4,devolvidos:{},trilhaManual:{},areaManual:{},semFaixa:[],inativos:[],area:{},filaArea:{},fin:emptyFin(),atual:null,posicionadoEm:{},finalEm:{},ultimaImportacao:null,importacoes:{},atualizadoEm:null}}
+function emptyState(){return {v:4,devolvidos:{},trilhaManual:{},areaManual:{},semFaixa:[],inativos:[],area:{},filaArea:{},fin:emptyFin(),atual:null,posicionadoEm:{},finalEm:{},furacao:{},ultimaImportacao:null,importacoes:{},atualizadoEm:null}}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/\s+/g," ").trim();
@@ -386,6 +387,7 @@ function boardKeys(tr=TRK){const s=new Set(Object.values(cards).filter(c=>!c.con
 function inFinalSet(tr=TRK){return new Set(FAIXAS.flatMap(f=>FIN(tr)[f]))}
 function finalList(tr=TRK){return FAIXAS.flatMap(f=>FIN(tr)[f])}
 function removeEverywhere(id){
+  if(S.furacao)delete S.furacao[id];
   S.semFaixa=S.semFaixa.filter(i=>i!==id);S.inativos=S.inativos.filter(x=>x.id!==id);
   for(const k of Object.keys(S.area))FAIXAS.forEach(f=>{S.area[k][f]=S.area[k][f].filter(i=>i!==id);S.filaArea[k][f]=S.filaArea[k][f].filter(i=>i!==id)});
   TRILHAS.forEach(t=>FAIXAS.forEach(f=>S.fin[t][f]=S.fin[t][f].filter(i=>i!==id)));
@@ -426,7 +428,7 @@ const remote={},pend={},writingDoc={};
 const docFor=p=>pend[p]||remote[p];
 function invKey(id){const c=card(id);return TR(c)&&AK(c)!==SEM_AREA?AKEY(c):null}
 function emptyF(){return {alta:[],media:[],baixa:[]}}
-function mainDocData(){return {v:4,trilhaManual:S.trilhaManual||{},areaManual:S.areaManual||{},inativos:S.inativos.filter(x=>!x.k).map(x=>({id:x.id,em:x.em})),fin:S.fin,atual:S.atual&&S.atual.modo==="final"?S.atual:null,finalEm:S.finalEm||{},ultimaImportacao:S.ultimaImportacao||null,importacoes:S.importacoes||{}}}
+function mainDocData(){return {v:4,trilhaManual:S.trilhaManual||{},areaManual:S.areaManual||{},inativos:S.inativos.filter(x=>!x.k).map(x=>({id:x.id,em:x.em})),fin:S.fin,atual:S.atual&&S.atual.modo==="final"?S.atual:null,finalEm:S.finalEm||{},furacao:S.furacao||{},ultimaImportacao:S.ultimaImportacao||null,importacoes:S.importacoes||{}}}
 function areaDocsData(){
   const keys=new Set([...Object.keys(S.area),...Object.keys(S.filaArea)]);
   S.inativos.forEach(x=>x.k&&keys.add(x.k));Object.values(S.devolvidos||{}).forEach(x=>keys.add(x.k));
@@ -471,7 +473,7 @@ function rebuild(){
   const keepAtual=S.atual&&S.atual.modo==="area"?S.atual:null;
   const n=emptyState();
   n.trilhaManual=m.trilhaManual||{};n.areaManual=m.areaManual||{};n.fin=m.fin||emptyFin();TRILHAS.forEach(t=>{if(!n.fin[t])n.fin[t]=emptyF()});
-  n.finalEm=m.finalEm||{};n.ultimaImportacao=m.ultimaImportacao||null;n.importacoes=m.importacoes||{};
+  n.finalEm=m.finalEm||{};n.furacao=m.furacao||{};n.ultimaImportacao=m.ultimaImportacao||null;n.importacoes=m.importacoes||{};
   n.inativos=(m.inativos||[]).map(x=>({id:x.id,em:x.em}));
   n.atual=keepAtual||(m.atual&&m.atual.modo==="final"?m.atual:null);
   const paths=new Set([...Object.keys(remote),...Object.keys(pend)]);
@@ -917,12 +919,25 @@ function moveIn(list,id,dir,pred){
   let j=i+dir;if(pred)while(j>=0&&j<list.length&&!pred(list[j]))j+=dir;
   if(j<0||j>=list.length)return;
   const fp0=finPos(id),ap0=areaPos(id),l0=locate(id);
-  pushUndo();const [x]=list.splice(i,1);list.splice(j,0,x);S.atual=null;
+  pushUndo();const [x]=list.splice(i,1);list.splice(j,0,x);S.atual=null;if(S.furacao)delete S.furacao[id];
   if(rkMode==="area"&&l0.k)logH(`passou o card ${id} da prioridade #${ap0} para a prioridade #${areaPos(id)} na área ${AL(l0.k)} (${TNOME[KTR(l0.k)]}).`,{card:id,tr:KTR(l0.k)});
   else if(fp0){const fp1=finPos(id);logH(`passou o card ${id} da prioridade #${fp0.pos} para a prioridade #${fp1.pos} no ranking de ${TNOME[fp0.tr]}.`,{card:id,tr:fp0.tr})}
   commit();
 }
+// furacão: vai direto para #1 da faixa Alta da área e #1 do ranking geral da trilha
+function furacao(id){
+  if(!isGestor||!canWrite)return;const c=card(id);const tr=TR(c);if(!tr)return toast("Defina a trilha do card antes.");
+  if(AK(c)===SEM_AREA)return toast("Defina a área do card antes.");
+  const antes=onde(id),fp0=finPos(id);
+  pushUndo();removeEverywhere(id);const k=AKEY(c);ensureArea(k);
+  S.area[k].alta.unshift(id);S.posicionadoEm[id]=now();
+  S.fin[tr].alta.unshift(id);S.finalEm[id]=now();
+  S.furacao=S.furacao||{};S.furacao[id]=now();S.atual=null;
+  logH(`marcou o card ${id} como furacão: foi da ${fp0?`prioridade #${fp0.pos}`:antes} para a prioridade #1 no ranking de ${TNOME[tr]}.`,{card:id,tr});
+  commit();toast(`${id} é furacão: agora é o #1 de ${TNOME[tr]}.`);
+}
 function setTier(id,nf){
+  if(nf==="furacao")return furacao(id);
   if(nf.startsWith("tr-"))return setTrilha(id,nf.slice(3));
   if(nf==="triagem")return backToTriage(id);
   if(nf==="inativar")return triar(id,"inativar");
@@ -932,7 +947,7 @@ function setTier(id,nf){
   commit();
   toast(`${id} vai para a Batalha Área de ${AL(k)}, faixa ${FNOME[nf]}.`);
 }
-function rebatFinal(id){const fp=finPos(id);if(fp)logH(`mandou o card ${id} refazer a Batalha Final de ${TNOME[fp.tr]} (estava na prioridade #${fp.pos}).`,{card:id,tr:fp.tr});pushUndo();TRILHAS.forEach(t=>FAIXAS.forEach(f=>S.fin[t][f]=S.fin[t][f].filter(i=>i!==id)));delete S.finalEm[id];S.atual=null;commit();toast(`${id} volta para a Batalha Final.`)}
+function rebatFinal(id){if(S.furacao)delete S.furacao[id];const fp=finPos(id);if(fp)logH(`mandou o card ${id} refazer a Batalha Final de ${TNOME[fp.tr]} (estava na prioridade #${fp.pos}).`,{card:id,tr:fp.tr});pushUndo();TRILHAS.forEach(t=>FAIXAS.forEach(f=>S.fin[t][f]=S.fin[t][f].filter(i=>i!==id)));delete S.finalEm[id];S.atual=null;commit();toast(`${id} volta para a Batalha Final.`)}
 function renderRanking(){
   const areas=areaKeys(),boards=boardKeys();
   if(!isGestor&&myArea&&rkMode==="geral"&&!renderRanking._init){renderRanking._init=1;rkMode="area";rkKey=areas.find(k=>AL(k)===myArea)||null}
@@ -959,10 +974,10 @@ function renderRanking(){
     if(!wait)acts+=`<button data-mv="${esc(r.id)}" data-d="-1" title="Subir" ${dis}>▲</button><button data-mv="${esc(r.id)}" data-d="1" title="Descer" ${dis}>▼</button>`;
     if(!wait&&rkMode!=="area")acts+=`<button data-rbf="${esc(r.id)}" title="Refazer a batalha final deste card" ${dis}>Rebater</button>`;
     if(!wait&&rkMode==="area")acts+=`<button data-rba="${esc(r.id)}" data-f="${r.f}" title="Refazer a batalha na área" ${dis}>Rebater</button>`;
-    acts+=`<select data-tier-of="${esc(r.id)}" aria-label="Mover card" ${dis}><option value="">Mover…</option>${FAIXAS.filter(x=>x!==r.f).map(x=>`<option value="${x}">Faixa ${FNOME[x]}</option>`).join("")}<option value="triagem">Voltar à triagem</option><option value="inativar">Inativar</option>${isGestor?`<option value="tr-${TRK==="sust"?"melh":"sust"}">Mudar para ${TNOME[TRK==="sust"?"melh":"sust"]}</option>`:""}</select>`;
+    acts+=`<select data-tier-of="${esc(r.id)}" aria-label="Mover card" ${dis}><option value="">Mover…</option>${isGestor&&!(r.pos===1&&r.f==="alta"&&S.furacao&&S.furacao[r.id])?`<option value="furacao">Furacão (vai para #1)</option>`:""}${FAIXAS.filter(x=>x!==r.f).map(x=>`<option value="${x}">Faixa ${FNOME[x]}</option>`).join("")}<option value="triagem">Voltar à triagem</option><option value="inativar">Inativar</option>${isGestor?`<option value="tr-${TRK==="sust"?"melh":"sust"}">Mudar para ${TNOME[TRK==="sust"?"melh":"sust"]}</option>`:""}</select>`;
     const ap=areaPos(r.id);
     html+=`<tr class="${wait?"wait":""}"><td class="pos">${wait?"—":r.pos}</td>${showGeral?`<td class="pos">${r.posGeral??"—"}</td>`:""}<td><span class="chip f-${r.f}">${FNOME[r.f]}${wait||rkMode==="board"?"":" "+r.posF}</span></td>
-    <td><button class="link cid" data-det="${esc(r.id)}">${esc(r.id)}</button></td><td>${esc(c.t)}${wait?` <span class="meta">(${r.sit.toLowerCase()})</span>`:""}</td>
+    <td><button class="link cid" data-det="${esc(r.id)}">${esc(r.id)}</button></td><td>${S.furacao&&S.furacao[r.id]?`<span class="chip furacao" title="Marcado como furacão em ${fmtDate(S.furacao[r.id],true)}">Furacão</span> `:""}${esc(c.t)}${wait?` <span class="meta">(${r.sit.toLowerCase()})</span>`:""}</td>
     ${showBoard?`<td>${esc(BD(c))}</td>`:""}${showArea?`<td>${esc(AK(c))}${ap?` <span class="meta">#${ap}</span>`:""}</td>`:""}
     <td>${catOf(c)==="iniciado"?'<span class="chip ini">Já iniciado</span><br>':""}<span class="meta">${esc(c.fase||"")}</span></td>
     <td><div class="acts">${acts}</div></td></tr>`;
