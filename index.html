@@ -140,6 +140,7 @@ dialog::backdrop{background:rgba(10,16,22,.55)}
 .filerow select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px}
 .chip.ok{background:var(--baixa-soft);color:var(--baixa)} .chip.bad{background:var(--alta-soft);color:var(--alta)} .chip.na{background:var(--surface-2);color:var(--muted)}
 .chip.furacao{background:#7c2d12;color:#fff}
+.chip.sis{background:var(--surface);border:1px solid var(--accent);color:var(--fg)}
 .chip.fase{background:var(--surface);border:1px dashed var(--line);color:var(--fg)}
 .chip.bd{background:var(--accent);color:var(--accent-ink)}
 .furados{font-size:13px;color:var(--muted);margin-top:2px}
@@ -752,6 +753,7 @@ function chipsHtml(c,o={}){
   if(o.tier)ch.push(`<span class="chip f-${o.tier}">${FNOME[o.tier]}</span>`);
   const tr=TR(c);ch.push(tr?`<span class="chip">${TNOME[tr]}</span>`:`<span class="chip bad">Trilha a definir</span>`);
   ch.push(`<span class="chip bd">${esc(BD(c))}</span>`);
+  if(c.sis)ch.push(`<span class="chip sis" title="[Inicial] Sistema envolvido">Sistema: ${esc(c.sis)}</span>`);
   ch.push(`<span class="chip ar">${esc(AK(c))}</span>`);
   if(c.fase)ch.push(`<span class="chip fase">Fase: ${esc(c.fase)}</span>`);
   return ch.join("");
@@ -1059,16 +1061,16 @@ function renderConcluidos(){
 }
 
 /* ---------- exportação ---------- */
-function rowOut(r,geral){const c=card(r.id);return {"Trilha":TNOME[TR(c)]||"","Posição geral":geral?(r.pos??""):(r.posGeral??""),"Faixa":FNOME[r.f]||"","Posição na faixa":geral?(r.posF??""):"","Board":BD(c),"Posição no board":boardPos(r.id)??"","Área":AK(c),"Posição na área":areaPos(r.id)??"","Situação":r.sit,"Card":r.id,"Título":c.t,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Cliente(s)":c.cli,"Tipo de demanda":c.tipo,"Nível de impacto":c.imp,"Solicitante":c.sol,"Área do solicitante":c.area,"Criado em":c.criado}}
-function inativosOut(){return S.inativos.map(x=>{const c=card(x.id);return {"Card":x.id,"Título":c.t,"Trilha":TNOME[TR(c)]||"","Board":BD(c),"Área":AK(c),"Solicitante":c.sol,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Inativado em":fmtDate(x.em)}})}
-function concluidosOut(){return concluidosRows().map(r=>({"Card":r.id,"Título":r.t,"Trilha":TNOME[r.tr]||"","Board":r.bd,"Área":r.ar||SEM_AREA,"Concluído em":fmtDate(r.dtc,true),"Fonte da data":r.dtcFonte==="importacao"?"Data da importação":"Log do board","Posição geral quando concluído":r.posGeral??"","Total no ranking":r.totalGeral??"","Posição no board":r.posBoard??"","Foto do ranking usada":r.fotoData?dayBr(r.fotoData):"","Avaliação":AVNOME[r.aval],"Cards acima ainda abertos":r.nFurados??"","Do mesmo board":r.nFuradosBoard??"","Passou na frente de":(r.furados||[]).map(furObj).map(({id:y,pos:p})=>`${y} (${p}º no board)`).join(", "),"Observação":r.onde||""}))}
+function rowOut(r,geral){const c=card(r.id);return {"Trilha":TNOME[TR(c)]||"","Posição geral":geral?(r.pos??""):(r.posGeral??""),"Faixa":FNOME[r.f]||"","Posição na faixa":geral?(r.posF??""):"","Board":BD(c),"Sistema envolvido":c.sis||"","Posição no board":boardPos(r.id)??"","Área":AK(c),"Posição na área":areaPos(r.id)??"","Situação":r.sit,"Card":r.id,"Título":c.t,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Cliente(s)":c.cli,"Tipo de demanda":c.tipo,"Nível de impacto":c.imp,"Solicitante":c.sol,"Área do solicitante":c.area,"Criado em":c.criado}}
+function inativosOut(){return S.inativos.map(x=>{const c=card(x.id);return {"Card":x.id,"Título":c.t,"Trilha":TNOME[TR(c)]||"","Board":BD(c),"Sistema envolvido":c.sis||"","Área":AK(c),"Solicitante":c.sol,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Inativado em":fmtDate(x.em)}})}
+function concluidosOut(){return concluidosRows().map(r=>({"Card":r.id,"Título":r.t,"Trilha":TNOME[r.tr]||"","Board":r.bd,"Sistema envolvido":(cards[r.id]&&cards[r.id].sis)||r.sis||"","Área":r.ar||SEM_AREA,"Concluído em":fmtDate(r.dtc,true),"Fonte da data":r.dtcFonte==="importacao"?"Data da importação":"Log do board","Posição geral quando concluído":r.posGeral??"","Total no ranking":r.totalGeral??"","Posição no board":r.posBoard??"","Foto do ranking usada":r.fotoData?dayBr(r.fotoData):"","Avaliação":AVNOME[r.aval],"Cards acima ainda abertos":r.nFurados??"","Do mesmo board":r.nFuradosBoard??"","Passou na frente de":(r.furados||[]).map(furObj).map(({id:y,pos:p})=>`${y} (${p}º no board)`).join(", "),"Observação":r.onde||""}))}
 const sheetName=(p,k)=>(p+k).replace(/[\\\/\?\*\[\]:]/g," ").slice(0,31);
 async function exportXlsx(kind){
   const dl=await claude.use("downloads");
   if(!dl){toast("Este visualizador não permite baixar arquivos.");return}
   const wb=XLSX.utils.book_new(),used=new Set();
   const add=(rows,name,w)=>{let n=name,i=2;while(used.has(n))n=name.slice(0,28)+" "+i++;used.add(n);const ws=XLSX.utils.json_to_sheet(rows.length?rows:[{"":"Sem registros"}]);ws["!cols"]=w.map(x=>({wch:x}));XLSX.utils.book_append_sheet(wb,ws,n)};
-  const W=[12,8,8,8,18,8,24,8,24,9,60,12,26,24,18,30,22,26,11];
+  const W=[12,8,8,8,18,20,8,24,8,24,9,60,12,26,24,18,30,22,26,11];
   if(kind==="tudo"){
     const keepT=TRK;
     for(const t of TRILHAS){TRK=t;const p=t==="sust"?"Sust ":"Melh ";
@@ -1079,8 +1081,8 @@ async function exportXlsx(kind){
     TRK=keepT;
   }
   if(kind==="historico")add(historicoOut(),"Histórico",[11,7,24,30,12,9,90]);
-  if(kind==="tudo"&&isGestor)add(inativosOut(),"Inativados",[9,60,12,18,24,22,12,26,20]);
-  if(kind==="tudo"||kind==="concluidos")add(concluidosOut(),"Concluídos",[9,60,12,18,24,12,16,12,10,10,14,22,12,10,50,26]);
+  if(kind==="tudo"&&isGestor)add(inativosOut(),"Inativados",[9,60,12,18,20,24,22,12,26,20]);
+  if(kind==="tudo"||kind==="concluidos")add(concluidosOut(),"Concluídos",[9,60,12,18,20,24,12,16,12,10,10,14,22,12,10,50,26]);
   const buf=XLSX.write(wb,{type:"array",bookType:"xlsx"});
   const d=new Date().toISOString().slice(0,10);
   const fn={tudo:`priorizacao-cards-${d}.xlsx`,inativos:`cards-para-inativar-${d}.xlsx`,concluidos:`cards-concluidos-${d}.xlsx`,historico:`historico-priorizacao-${d}.xlsx`}[kind];
