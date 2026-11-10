@@ -356,7 +356,10 @@ function fmtDate(iso,noTime){if(!iso)return"";const d=new Date(iso);if(isNaN(d))
 function catOf(c){const f=norm(c&&c.fase);return !f||f.startsWith("backlog")?"backlog":"iniciado"}
 const CATNOME={backlog:"Backlog",iniciado:"Já iniciado"};
 function card(id){return cards[id]||{id,t:"(card não encontrado na base)"}}
-const AK=c=>(c&&((S.areaManual&&S.areaManual[c.id])||c.ar))||SEM_AREA;
+// áreas renomeadas/unificadas: o nome antigo passa a valer como o novo (base, cadastros e dados já salvos)
+const AREA_ALIAS={"mbrf":"MBRF+Citrosuco","citrosuco":"MBRF+Citrosuco","mbrf + citrosuco":"MBRF+Citrosuco"};
+const normArea=a=>{a=String(a||"").trim();return AREA_ALIAS[norm(a)]||a};
+const AK=c=>normArea(c&&((S.areaManual&&S.areaManual[c.id])||c.ar))||SEM_AREA;
 const BD=c=>(c&&c.bd)||SEM_BOARD;
 const TR=c=>(c&&((S.trilhaManual&&S.trilhaManual[c.id])||c.tr))||"";
 const AKEY=c=>TR(c)+"|"+AK(c);
@@ -499,6 +502,15 @@ function rebuild(){
     (d.devolvidos||[]).forEach(x=>n.devolvidos[x.id]={k:d.k,em:x.em});
     Object.assign(n.posicionadoEm,d.posicionadoEm||{});
   }
+  // junta as listas guardadas com o nome antigo da área na área nova
+  for(const k of new Set([...Object.keys(n.area),...Object.keys(n.filaArea)])){
+    const nk=KTR(k)+"|"+normArea(AL(k));if(nk===k)continue;
+    if(!n.area[nk])n.area[nk]=emptyF();if(!n.filaArea[nk])n.filaArea[nk]=emptyF();
+    FAIXAS.forEach(f=>{n.area[nk][f]=[...new Set([...n.area[nk][f],...((n.area[k]||{})[f]||[])])];n.filaArea[nk][f]=[...new Set([...n.filaArea[nk][f],...((n.filaArea[k]||{})[f]||[])])].filter(i=>!n.area[nk][f].includes(i))});
+    delete n.area[k];delete n.filaArea[k];
+  }
+  const nkOf=k=>k?KTR(k)+"|"+normArea(AL(k)):k;
+  n.inativos.forEach(x=>{x.k=nkOf(x.k)});Object.values(n.devolvidos).forEach(d=>{d.k=nkOf(d.k)});
   S=JSON.parse(JSON.stringify(n));
   recomputeTriagem();
 }
@@ -734,10 +746,10 @@ function triar(id,f){
 function devolver(id){if(!canWrite)return;const c=card(id);const k=AKEY(c);pushUndo();S.devolvidos=S.devolvidos||{};S.devolvidos[id]={k,em:now()};logH(`devolveu o card ${id} ao gestor: não é da área ${AL(k)}.`,{card:id,tr:KTR(k)});commit();toast(`${id} foi devolvido ao gestor para revisar a área.`)}
 function manterArea(id){if(!isGestor)return;pushUndo();delete S.devolvidos[id];logH(`manteve o card ${id} na área ${AK(card(id))} (tinha sido devolvido).`,{card:id,tr:trDe(id)});commit();toast(`${id} continua em ${AK(card(id))}.`)}
 // áreas oficiais: aparecem nas listas mesmo antes de ter cards
-const AREAS_FIXAS=["Ambev","Citrosuco","Gerdau","MBRF","Multiclientes"];
-function allAreaNames(){const s=new Set(AREAS_FIXAS);Object.values(cards).forEach(c=>{const a=AK(c);if(a!==SEM_AREA)s.add(a)});Object.values(S.areaManual||{}).forEach(a=>a&&s.add(a));return [...s].sort(sortPt)}
+const AREAS_FIXAS=["Ambev","Gerdau","MBRF+Citrosuco","Multiclientes"];
+function allAreaNames(){const s=new Set(AREAS_FIXAS);Object.values(cards).forEach(c=>{const a=AK(c);if(a!==SEM_AREA)s.add(a)});Object.values(S.areaManual||{}).forEach(a=>a&&s.add(normArea(a)));return [...s].sort(sortPt)}
 function setArea(id,val){
-  if(!isGestor)return;val=String(val||"").trim().replace(/\s+/g," ");
+  if(!isGestor)return;val=normArea(String(val||"").trim().replace(/\s+/g," "));
   if(val){const m=allAreaNames().find(a=>norm(a)===norm(val));if(m)val=m}
   const c=card(id);const before=AK(c);
   const novo=val||c.ar||SEM_AREA;if(novo===before)return;
@@ -1076,7 +1088,7 @@ function renderConcluidos(){
   $("#coStats").innerHTML=[["Avaliados",ev.length],["Seguiram a fila",ok],["Furaram a fila",ev.length-ok],["Aderência",ev.length?Math.round(ok*100/ev.length)+"%":"—"]].map(([l,n])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join("");
   $("#btnExportCo").disabled=!all.length;
   if(!rows.length){$("#coBody").innerHTML=`<tr><td colspan="8"><div class="empty" style="border:0"><b>${all.length?"Nada com esse filtro":"Nenhum card concluído ainda"}</b>${all.length?"Limpe os filtros.":"Os concluídos aparecem aqui quando vierem nas bases importadas."}</div></td></tr>`;return}
-  $("#coBody").innerHTML=rows.map(r=>`<tr><td><button class="link cid" data-det="${esc(r.id)}">${esc(r.id)}</button></td><td>${esc(r.t)}</td><td>${esc(TNOME[r.tr]||"—")}</td><td>${esc(r.bd||"—")}</td><td>${esc(r.ar||SEM_AREA)}</td>
+  $("#coBody").innerHTML=rows.map(r=>`<tr><td><button class="link cid" data-det="${esc(r.id)}">${esc(r.id)}</button></td><td>${esc(r.t)}</td><td>${esc(TNOME[r.tr]||"—")}</td><td>${esc(r.bd||"—")}</td><td>${esc(normArea(r.ar)||SEM_AREA)}</td>
     <td>${fmtDate(r.dtc,true)||"—"}${r.dtcFonte==="importacao"?' <span class="meta">(data da importação)</span>':""}</td>
     <td>${r.posGeral?`${r.posBoard?`${r.posBoard}º${r.totalBoard?` de ${r.totalBoard}`:""} no board`:"—"}${r.fotoData?`<div class="furados">foto de ${dayBr(r.fotoData)}</div>`:""}`:"—"}</td><td>${avalHtml(r)}</td></tr>`).join("");
 }
@@ -1084,7 +1096,7 @@ function renderConcluidos(){
 /* ---------- exportação ---------- */
 function rowOut(r){const c=card(r.id);return {"Trilha":TNOME[TR(c)]||"","Board":BDG(c),"Posição no board":boardPos(r.id)??"","Faixa":FNOME[r.f]||"","Posição na faixa":r.posF??"","Sistema envolvido":c.sis||"","Área":AK(c),"Posição na área":areaPos(r.id)??"","Situação":r.sit,"Card":r.id,"Título":c.t,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Cliente(s)":c.cli,"Tipo de demanda":c.tipo,"Nível de impacto":c.imp,"Solicitante":c.sol,"Área do solicitante":c.area,"Criado em":c.criado}}
 function inativosOut(){return S.inativos.map(x=>{const c=card(x.id);return {"Card":x.id,"Título":c.t,"Trilha":TNOME[TR(c)]||"","Board":BD(c),"Sistema envolvido":c.sis||"","Área":AK(c),"Solicitante":c.sol,"Categoria":CATNOME[catOf(c)],"Fase atual":c.fase,"Inativado em":fmtDate(x.em)}})}
-function concluidosOut(){return concluidosRows().map(r=>({"Card":r.id,"Título":r.t,"Trilha":TNOME[r.tr]||"","Board":r.bd,"Sistema envolvido":(cards[r.id]&&cards[r.id].sis)||r.sis||"","Área":r.ar||SEM_AREA,"Concluído em":fmtDate(r.dtc,true),"Fonte da data":r.dtcFonte==="importacao"?"Data da importação":"Log do board","Posição no board quando concluído":r.posBoard??"","Total no board":r.totalBoard??"","Foto do ranking usada":r.fotoData?dayBr(r.fotoData):"","Avaliação":AVNOME[r.aval],"Cards acima ainda abertos":r.nFurados??"","Do mesmo board":r.nFuradosBoard??"","Passou na frente de":(r.furados||[]).map(furObj).map(({id:y,pos:p})=>`${y} (${p}º no board)`).join(", "),"Observação":r.onde||""}))}
+function concluidosOut(){return concluidosRows().map(r=>({"Card":r.id,"Título":r.t,"Trilha":TNOME[r.tr]||"","Board":r.bd,"Sistema envolvido":(cards[r.id]&&cards[r.id].sis)||r.sis||"","Área":normArea(r.ar)||SEM_AREA,"Concluído em":fmtDate(r.dtc,true),"Fonte da data":r.dtcFonte==="importacao"?"Data da importação":"Log do board","Posição no board quando concluído":r.posBoard??"","Total no board":r.totalBoard??"","Foto do ranking usada":r.fotoData?dayBr(r.fotoData):"","Avaliação":AVNOME[r.aval],"Cards acima ainda abertos":r.nFurados??"","Do mesmo board":r.nFuradosBoard??"","Passou na frente de":(r.furados||[]).map(furObj).map(({id:y,pos:p})=>`${y} (${p}º no board)`).join(", "),"Observação":r.onde||""}))}
 const sheetName=(p,k)=>(p+k).replace(/[\\\/\?\*\[\]:]/g," ").slice(0,31);
 async function exportXlsx(kind){
   const dl=await claude.use("downloads");
@@ -1326,11 +1338,11 @@ async function start(u){
 }
 function applyHash(){}
 let PESSOAS=[],pessoasSujo=false;
-function areaDe(acc,e){e=String(e||"").toLowerCase();const p=((acc&&acc.pessoas)||[]).find(x=>x&&String(x.email||"").toLowerCase()===e);return p&&p.papel!=="gestor"?String(p.area||""):""}
+function areaDe(acc,e){e=String(e||"").toLowerCase();const p=((acc&&acc.pessoas)||[]).find(x=>x&&String(x.email||"").toLowerCase()===e);return p&&p.papel!=="gestor"?normArea(p.area||""):""}
 function nomePessoa(e){e=String(e||"").toLowerCase();const p=PESSOAS.find(x=>x.email===e);return p&&p.nome?p.nome:""}
 function setPessoas(acc){
   const low=a=>(a||[]).map(x=>String(x).toLowerCase());
-  const salvas=(acc&&acc.pessoas)||[];const mapa={};salvas.forEach(p=>{if(p&&p.email)mapa[String(p.email).toLowerCase()]={email:String(p.email).toLowerCase(),nome:p.nome||"",papel:p.papel||"usuario",area:p.area||""}});
+  const salvas=(acc&&acc.pessoas)||[];const mapa={};salvas.forEach(p=>{if(p&&p.email)mapa[String(p.email).toLowerCase()]={email:String(p.email).toLowerCase(),nome:p.nome||"",papel:p.papel||"usuario",area:normArea(p.area||"")}});
   low(acc&&acc.gestores).forEach(e=>{mapa[e]=Object.assign(mapa[e]||{email:e,nome:""},{papel:"gestor"})});
   low(acc&&acc.usuarios).forEach(e=>{if(!mapa[e])mapa[e]={email:e,nome:"",papel:"usuario"}});
   MASTER.forEach(e=>{mapa[e]=Object.assign(mapa[e]||{email:e,nome:""},{papel:"gestor"})});
